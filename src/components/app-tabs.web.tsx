@@ -22,11 +22,17 @@ export default function AppTabs() {
       <TabSlot style={{ height: '100%' }} />
       <TabList asChild>
         <CustomTabList>
-          <TabTrigger name="home" href="/" asChild>
-            <TabButton>Home</TabButton>
+          <TabTrigger name="home" href={"/" as any} asChild>
+            <TabButton>Dashboard</TabButton>
           </TabTrigger>
-          <TabTrigger name="explore" href="/explore" asChild>
-            <TabButton>Explore</TabButton>
+          <TabTrigger name="trucks" href={"/trucks" as any} asChild>
+            <TabButton>Stock</TabButton>
+          </TabTrigger>
+          <TabTrigger name="customers" href={"/customers" as any} asChild>
+            <TabButton>Customers</TabButton>
+          </TabTrigger>
+          <TabTrigger name="profile" href={"/profile" as any} asChild>
+            <TabButton>Profile</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>
@@ -56,7 +62,7 @@ export function CustomTabList(props: TabListProps) {
     <View {...props} style={styles.tabListContainer}>
       <ThemedView type="backgroundElement" style={styles.innerContainer}>
         <ThemedText type="smallBold" style={styles.brandText}>
-          Expo Starter
+          Logistics Manager
         </ThemedText>
 
         {props.children}

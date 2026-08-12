@@ -1,16 +1,48 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import React from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
+import { Drawer } from '@/components/ui/drawer';
+import { AuthProvider, useAuth } from '@/context/auth-context';
+import LoginScreen from './login';
 
-export default function TabLayout() {
+import { persistor, store } from '@/store/store';
+import { Provider } from 'react-redux';
+import { PersistGate } from 'redux-persist/integration/react';
+
+function TabLayoutInner() {
+  const { isAuthenticated, login } = useAuth();
   const colorScheme = useColorScheme();
+  
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
+      <View style={{ flex: 1 }}>
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+        <AnimatedSplashOverlay />
+        {isAuthenticated ? (
+          <>
+            <AppTabs />
+            <Drawer />
+          </>
+        ) : (
+          <LoginScreen onLogin={login} />
+        )}
+      </View>
     </ThemeProvider>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <Provider store={store} >
+      <PersistGate loading={null} persistor={persistor}>
+    <AuthProvider>
+      <TabLayoutInner />
+    </AuthProvider>
+    </PersistGate>
+    </Provider>
   );
 }
