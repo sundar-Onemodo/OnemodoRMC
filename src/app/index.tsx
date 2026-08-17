@@ -147,7 +147,7 @@ export default function DashboardScreen() {
 
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
       <AppHeader
         title={user?.name || "Logistics Manager"}
         showMenu={true}
@@ -159,23 +159,23 @@ export default function DashboardScreen() {
               styles.headerCalendarButton,
               pressed && { backgroundColor: colors.surfaceContainerHigh },
             ]}>
-            <MaterialIcons name="date-range" size={24} color={colors.primary} />
+            <MaterialIcons name="date-range" size={24} color={"#595d5c"} />
           </Pressable>
         }
       />
       
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Redesigned Welcome Banner (without Greeting) */}
-        <View style={styles.welcomeSection}>
+        {/* <View style={styles.welcomeSection}>
           <View style={styles.welcomeInfo}>
             {plant_name && (
-              <View style={[styles.plantBadge, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '33' }]}>
-                <MaterialIcons name="business" size={14} color={colors.primary} />
+              <View style={[styles.plantBadge, { backgroundColor: colors.primary + '1C', borderColor: colors.primary + '2C' }]}>
+                <MaterialIcons name="business" size={15} color={colors.primary} />
                 <Text style={[styles.plantText, { color: colors.primary }]}>{plant_name}</Text>
               </View>
             )}
           </View>
-        </View>
+        </View> */}
 
         {/* Date Filter selector using single color-code */}
         <ScrollView
@@ -195,13 +195,13 @@ export default function DashboardScreen() {
                 style={[
                   styles.filterButtonCard,
                   {
-                    backgroundColor: isActive ? itemTheme.activeBg : itemTheme.bg,
-                    borderColor: isActive ? itemTheme.activeBg : itemTheme.border,
+                    backgroundColor: isActive ? itemTheme.activeBg : (scheme === 'dark' ? '#111827' : '#ffffff'),
+                    borderColor: isActive ? itemTheme.activeBg : colors.outlineVariant + '2E',
                     shadowColor: isActive ? itemTheme.activeBg : 'transparent',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: isActive ? 0.3 : 0,
-                    shadowRadius: isActive ? 4 : 0,
-                    elevation: isActive ? 3 : 0,
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: isActive ? 0.2 : 0,
+                    shadowRadius: 6,
+                    elevation: isActive ? 4 : 0,
                   }
                 ]}
               >
@@ -209,8 +209,8 @@ export default function DashboardScreen() {
                   style={[
                     styles.filterText,
                     { 
-                      color: isActive ? itemTheme.activeText : itemTheme.text,
-                      fontWeight: isActive ? '700' : '600'
+                      color: isActive ? itemTheme.activeText : colors.textSecondary,
+                      fontWeight: isActive ? '700' : '500'
                     },
                   ]}
                 >
@@ -222,9 +222,15 @@ export default function DashboardScreen() {
         </ScrollView>
 
         {/* Simplified Date Range Display Text Only */}
-        <View style={[styles.dateRangeDisplay, { backgroundColor: activeTheme.bg, borderColor: activeTheme.border }]}>
-          <MaterialIcons name="date-range" size={16} color={activeTheme.activeBg} style={{ marginRight: 8 }} />
-          <Text style={[styles.dateRangeValueText, { color: activeTheme.activeBg }]}>
+        <View style={[
+          styles.dateRangeDisplay, 
+          { 
+            backgroundColor: scheme === 'dark' ? 'rgba(30, 41, 59, 0.3)' : 'rgba(255, 255, 255, 0.7)', 
+            borderColor: colors.outlineVariant + '2A' 
+          }
+        ]}>
+          <MaterialIcons name="date-range" size={16} color={"#595d5c"} style={{ marginRight: 8 }} />
+          <Text style={[styles.dateRangeValueText, { color: "#595d5c" }]}>
             {formatDisplayDate(startDate)} - {formatDisplayDate(endDate)}
           </Text>
         </View>
@@ -344,10 +350,10 @@ export default function DashboardScreen() {
           <View style={styles.coverWrapper}>
             <Image
               style={styles.coverImage}
-              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDnLoGRgLXPuhjpsWviBL1_OttFpRap0A2TTbVizzdHb6ZYFN4NwRbeYCqXFcvz9NgAXCfdLdgXuxKgWzjAUCO-radAEnyqmfZU1yf_8OFVOEBEe27ViSPTZs0Mu6wp0a7tGTyy0hCfuscCW93VN3FLOwqlOMRrRG4ktsDMRSSFohH_TuKr3DalMi1IEzD2ocwlaMriwQM-sDPLA6IxkirUsKzPGw_LW6uB9dlulvTQ7x6B_QVBi2RG' }}
+             source={require('../../assets/images/rmc.jpg')}
             />
             <View style={styles.coverOverlay}>
-              <Text style={styles.coverText}>Global Production Status</Text>
+              <Text style={styles.coverText}>Mix Designs Distribution</Text>
             </View>
           </View>
         </Card>

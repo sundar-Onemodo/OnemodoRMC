@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
   optionIconWrapper: {
     width: 40,
     height: 40,
-    borderRadius: 8,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -661,7 +661,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one * 1.5,
-    borderRadius: 8,
+    borderRadius: 12,
     marginTop: Spacing.two,
   },
   bentoActionText: {
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#006c49',
+    backgroundColor: '#10b981',
   },
   securityLabel: {
     fontSize: 12,
@@ -735,7 +735,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     height: 48,
     paddingHorizontal: Spacing.two,
   },
@@ -757,7 +757,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     flex: 1,
     height: 48,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -770,7 +770,7 @@ const styles = StyleSheet.create({
   saveButton: {
     flex: 2,
     height: 48,
-    borderRadius: 8,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },

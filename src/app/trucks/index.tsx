@@ -402,6 +402,9 @@ const styles = StyleSheet.create({
   },
   searchWrapper: {
     marginTop: Spacing.one,
+    borderWidth:1,
+    borderColor:'#E6E8E8',
+    borderRadius:10,
   },
   filterContainer: {
     flexDirection: 'row',
@@ -412,9 +415,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.one * 2,
+    paddingVertical: 10,
     paddingHorizontal: Spacing.two,
-    borderRadius: 8,
+    borderRadius: 20, // Premium capsule pill design
     gap: Spacing.one,
   },
   filterTabLabel: {

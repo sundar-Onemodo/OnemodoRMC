@@ -46,7 +46,7 @@ export function Button({ title, variant = 'primary', size = 'md', style, ...prop
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 8,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',

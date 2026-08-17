@@ -164,47 +164,47 @@ export function ChartContainer() {
                 fontWeight: '600',
                 fontFamily: 'System',
               }}
-              pointerConfig={{
-                pointerStripUptoDataPoint: true,
-                pointerStripColor: colors.outlineVariant,
-                pointerStripWidth: 2,
-                strokeDashArray: [2, 5],
-                pointerColor: colors.outlineVariant,
-                radius: 4,
-                pointerLabelWidth: 120,
-                pointerLabelHeight: 100,
-                pointerLabelComponent: (items: any) => {
-                  const cashPct = items[0]?.value ?? 0;
-                  const creditPct = items[1]?.value ?? 0;
-                  const cashVal = totalSalesVal * (cashPct / 100);
-                  const creditVal = totalSalesVal * (creditPct / 100);
-                  return (
-                    <View
-                      style={{
-                        height: 100,
-                        width: 120,
-                        backgroundColor: '#282C3E',
-                        borderRadius: 6,
-                        justifyContent: 'center',
-                        paddingLeft: 12,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.15,
-                        shadowRadius: 8,
-                        elevation: 5,
-                      }}>
-                      <Text style={{color: '#a78bfa', fontSize: 9, fontWeight: '700'}}>CASH SALES</Text>
-                      <Text style={{color: 'white', fontWeight: '800', fontSize: 12, marginBottom: 8}}>
-                        {formatCurrency(cashVal)}
-                      </Text>
-                      <Text style={{color: '#67e8f9', fontSize: 9, fontWeight: '700'}}>CREDIT SALES</Text>
-                      <Text style={{color: 'white', fontWeight: '800', fontSize: 12}}>
-                        {formatCurrency(creditVal)}
-                      </Text>
-                    </View>
-                  );
-                },
-              }}
+              // pointerConfig={{
+              //   pointerStripUptoDataPoint: true,
+              //   pointerStripColor: colors.outlineVariant,
+              //   pointerStripWidth: 2,
+              //   strokeDashArray: [2, 5],
+              //   pointerColor: colors.outlineVariant,
+              //   radius: 4,
+              //   pointerLabelWidth: 120,
+              //   pointerLabelHeight: 100,
+              //   pointerLabelComponent: (items: any) => {
+              //     const cashPct = items[0]?.value ?? 0;
+              //     const creditPct = items[1]?.value ?? 0;
+              //     const cashVal = totalSalesVal * (cashPct / 100);
+              //     const creditVal = totalSalesVal * (creditPct / 100);
+              //     return (
+              //       <View
+              //         style={{
+              //           height: 100,
+              //           width: 120,
+              //           backgroundColor: '#282C3E',
+              //           borderRadius: 6,
+              //           justifyContent: 'center',
+              //           paddingLeft: 12,
+              //           shadowColor: '#000',
+              //           shadowOffset: { width: 0, height: 4 },
+              //           shadowOpacity: 0.15,
+              //           shadowRadius: 8,
+              //           elevation: 5,
+              //         }}>
+              //         <Text style={{color: '#a78bfa', fontSize: 9, fontWeight: '700'}}>CASH SALES</Text>
+              //         <Text style={{color: 'white', fontWeight: '800', fontSize: 12, marginBottom: 8}}>
+              //           {formatCurrency(cashVal)}
+              //         </Text>
+              //         <Text style={{color: '#67e8f9', fontSize: 9, fontWeight: '700'}}>CREDIT SALES</Text>
+              //         <Text style={{color: 'white', fontWeight: '800', fontSize: 12}}>
+              //           {formatCurrency(creditVal)}
+              //         </Text>
+              //       </View>
+              //     );
+              //   },
+              // }}
             />
           </View>
 

@@ -336,13 +336,18 @@ const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: Spacing.containerMargin,
     paddingTop: Spacing.stackGap,
-    paddingBottom: 40,
+    paddingBottom: 100, // Adjusted to prevent overlap with floating bottom tab
   },
   plantCard: {
     marginBottom: Spacing.stackGap,
     borderRadius: 16,
     padding: Spacing.cardPadding - 4,
     borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
   },
   plantInfoRow: {
     flexDirection: "row",
@@ -376,6 +381,9 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     marginBottom: Spacing.stackGap,
+    borderWidth: 1,
+    borderColor: '#E6E8E8',
+    borderRadius: 10,
   },
   listContainer: {
     gap: Spacing.stackGap,

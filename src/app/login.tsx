@@ -14,16 +14,16 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
-
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Colors, Spacing } from '@/constants/theme';
-import { loginUser, resetRmcAuth } from '@/store/authSlice';
-import { RootState, AppDispatch } from '@/store/store';
+import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
+
+import { Button } from '@/components/ui/button';
+import { Colors, Spacing } from '@/constants/theme';
+import { loginUser, resetRmcAuth } from '@/store/authSlice';
+import { RootState, AppDispatch } from '@/store/store';
 
 interface LoginScreenProps {
   onLogin: () => void;
@@ -31,10 +31,12 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
-  const {isLoading, isError, errorMessage, token} = useSelector(
+  const isDark = scheme === 'dark';
+  const colors = Colors[isDark ? 'dark' : 'light'];
+  
+  const { isLoading, isError, errorMessage, token } = useSelector(
     (state: RootState) => state.auth
-  )
+  );
   const dispatch = useDispatch<AppDispatch>();
 
   const [email, setEmail] = useState('');
@@ -42,38 +44,40 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
 
   const emailInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
 
   useFocusEffect(
-    useCallback(()=>{
-      setTimeout(()=>{
+    useCallback(() => {
+      setTimeout(() => {
         emailInputRef.current?.focus();
-      }, 500)
-    },[])
+      }, 500);
+    }, [])
   );
 
-  useEffect(()=> {
+  useEffect(() => {
     const loadSavedData = async () => {
       try {
-        const savedEmail = await AsyncStorage.getItem("savedRmcEmail")
-        if(savedEmail){
+        const savedEmail = await AsyncStorage.getItem("savedRmcEmail");
+        if (savedEmail) {
           setEmail(savedEmail);
         }
       } catch (e) {
         console.log("failed to load saved data", e);
       }
-    }
+    };
     loadSavedData();
-  }, [])
+  }, []);
 
-  useEffect(()=>{
-    if(token) {
+  useEffect(() => {
+    if (token) {
       onLogin();
     }
 
-    if(isError && errorMessage) {
+    if (isError && errorMessage) {
       Alert.alert("Login Failed", errorMessage, [
         {
           text: "OK",
@@ -81,173 +85,206 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         },
       ]);
     }
-  },[token, isError, errorMessage])
+  }, [token, isError, errorMessage]);
 
   const handleEmailChange = (text: string) => {
     const cleanedText = text.replace(/\s/g, "");
-    setEmail(cleanedText);    
-  }
+    setEmail(cleanedText);
+  };
 
-  const isFormValid = () => {
+  const handleSignIn = async () => {
     const trimmedEmail = email.trim();
     const trimmedPassword = password.trim();
 
-    if(!trimmedEmail || !trimmedPassword) return false;
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(trimmedEmail);
-  }
-
-  const handleSignIn = async() => {
-    const trimmedEmail = email.trim();
-    const trimmedPassword = password.trim();
-
-    if(!trimmedEmail || !trimmedPassword) {
+    if (!trimmedEmail || !trimmedPassword) {
       Alert.alert("Validation", "Please enter both email and password.");
       return;
     }
 
-    try{
+    try {
       await dispatch(
-        loginUser({email: trimmedEmail, password: trimmedPassword}),
+        loginUser({ email: trimmedEmail, password: trimmedPassword }),
       );
-      await AsyncStorage.setItem("savedRmcEmail", trimmedEmail)
+      await AsyncStorage.setItem("savedRmcEmail", trimmedEmail);
     } catch (error) {
-      console.log("Error", error)
+      console.log("Error", error);
     }
   };
 
+  const gradientColors = isDark 
+    ? ['#090d16', '#111827', '#090d16'] as const
+    : ['#eff6ff', '#dbeafe', '#eff6ff'] as const;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.headerSection}>
-          <View style={[styles.logoBg, { backgroundColor: colors.primaryContainer }]}>
-            <MaterialIcons name="local-shipping" size={32} color="#ffffff" />
-          </View>
-          <Text style={[styles.brandTitle, { color: colors.primary }]}>Onemodo RMC</Text>
-          <Text style={[styles.brandSubtitle, { color: colors.textSecondary }]}>
-            Sign in to manage your sales
-          </Text>
-        </View>
-
-        <Card style={styles.formCard} variant="lowest">
-          <Text style={[styles.formTitle, { color: colors.text }]}>Welcome Back</Text>
-
-          {error ? (
-            <View style={[styles.errorBox, { backgroundColor: colors.errorContainer }]}>
-              <MaterialIcons name="error-outline" size={16} color={colors.error} />
-              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-            </View>
-          ) : null}
-
-          {/* Email input */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>EMAIL ADDRESS</Text>
-            <View
-              style={[
-                styles.inputWrapper,
-                { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant + '33' },
-              ]}
-            >
-              <MaterialIcons name="mail-outline" size={20} color={colors.outline} style={styles.inputIcon} />
-              <TextInput
-                ref={emailInputRef}
-                style={[styles.input, { color: colors.text }]}
-                placeholder="sundar@precision.com"
-                placeholderTextColor={colors.outlineVariant}
-                value={email}
-                onChangeText={handleEmailChange}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="next"
-                onSubmitEditing={()=>passwordInputRef.current?.focus()}
-              />
-            </View>
-          </View>
-
-          {/* Password input */}
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>PASSWORD</Text>
-            <View
-              style={[
-                styles.inputWrapper,
-                { backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant + '33' },
-              ]}
-            >
-              <MaterialIcons name="lock-outline" size={20} color={colors.outline} style={styles.inputIcon} />
-              <TextInput
-                ref={passwordInputRef}
-                style={[styles.input, { color: colors.text }]}
-                placeholder="••••••••"
-                placeholderTextColor={colors.outlineVariant}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="done"
-              />
-              <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-                <MaterialIcons
-                  name={showPassword ? 'visibility' : 'visibility-off'}
-                  size={20}
-                  color={colors.outline}
-                />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Remember Me and Forgot Password */}
-          <View style={styles.row}>
-            <Pressable onPress={() => setRememberMe(!rememberMe)} style={styles.checkboxContainer}>
-              <View
-                style={[
-                  styles.checkbox,
-                  { borderColor: colors.outline },
-                  rememberMe && { backgroundColor: colors.primaryContainer, borderColor: colors.primaryContainer },
-                ]}
-              >
-                {rememberMe && <MaterialIcons name="check" size={14} color="#ffffff" />}
+    <SafeAreaView style={styles.container}>
+      <LinearGradient colors={gradientColors} style={styles.gradientBg}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.container}
+        >
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent} 
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Header / Brand section */}
+            <View style={styles.headerSection}>
+              <View style={[styles.logoBg, { backgroundColor: colors.primary }]}>
+                <MaterialIcons name="local-shipping" size={32} color="#ffffff" />
               </View>
-              <Text style={[styles.checkboxLabel, { color: colors.textSecondary }]}>Remember me</Text>
-            </Pressable>
-
-            <Pressable>
-              <Text style={[styles.forgotText, { color: colors.primary }]}>Forgot password?</Text>
-            </Pressable>
-          </View>
-
-          {/* Sign In Button */}
-          <Button title="Sign In" onPress={handleSignIn} variant="primary" style={styles.signInButton} />
-        </Card>
-
-        {/* Footer info */}
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: colors.outline }]}>Secure Enterprise Connection</Text>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-
-    <Modal transparent={true} animationType="fade" visible={isLoading}>
-      <View style= {styles.modalContainer}>
-        <View style={styles.modalContent}>
-              <ActivityIndicator size="large" color={"#DC2626"}/>
-              <Text style={[styles.modalText, {color:'#ccc'}]}>
-                Verifying RMC account...
+              <Text style={[styles.brandTitle, { color: colors.text }]}>Onemodo RMC</Text>
+              <Text style={[styles.brandSubtitle, { color: colors.textSecondary }]}>
+                Sign in to manage your logistics & sales
               </Text>
+            </View>
+
+            {/* Glassmorphic Form Card */}
+            <View style={[
+              styles.formCard, 
+              { 
+                backgroundColor: isDark ? 'rgba(17, 24, 39, 0.75)' : 'rgba(255, 255, 255, 0.85)',
+                borderColor: colors.outlineVariant + '2A',
+              }
+            ]}>
+              <Text style={[styles.formTitle, { color: colors.text }]}>Welcome Back</Text>
+
+              {error ? (
+                <View style={[styles.errorBox, { backgroundColor: colors.errorContainer }]}>
+                  <MaterialIcons name="error-outline" size={16} color={colors.error} />
+                  <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+                </View>
+              ) : null}
+
+              {/* Email input */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>EMAIL ADDRESS</Text>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    { 
+                      backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                      borderColor: emailFocused ? colors.primary : colors.outlineVariant + '3A',
+                    },
+                  ]}
+                >
+                  <MaterialIcons 
+                    name="mail-outline" 
+                    size={20} 
+                    color={emailFocused ? colors.primary : colors.outline} 
+                    style={styles.inputIcon} 
+                  />
+                  <TextInput
+                    ref={emailInputRef}
+                    style={[styles.input, { color: colors.text }]}
+                    placeholder="sundar@precision.com"
+                    placeholderTextColor={colors.outline}
+                    value={email}
+                    onChangeText={handleEmailChange}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    onFocus={() => setEmailFocused(true)}
+                    onBlur={() => setEmailFocused(false)}
+                    onSubmitEditing={() => passwordInputRef.current?.focus()}
+                  />
+                </View>
+              </View>
+
+              {/* Password input */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>PASSWORD</Text>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    { 
+                      backgroundColor: isDark ? '#0f172a' : '#f8fafc',
+                      borderColor: passwordFocused ? colors.primary : colors.outlineVariant + '3A',
+                    },
+                  ]}
+                >
+                  <MaterialIcons 
+                    name="lock-outline" 
+                    size={20} 
+                    color={passwordFocused ? colors.primary : colors.outline} 
+                    style={styles.inputIcon} 
+                  />
+                  <TextInput
+                    ref={passwordInputRef}
+                    style={[styles.input, { color: colors.text }]}
+                    placeholder="••••••••"
+                    placeholderTextColor={colors.outline}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onFocus={() => setPasswordFocused(true)}
+                    onBlur={() => setPasswordFocused(false)}
+                    onSubmitEditing={handleSignIn}
+                  />
+                  <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+                    <MaterialIcons
+                      name={showPassword ? 'visibility' : 'visibility-off'}
+                      size={20}
+                      color={colors.outline}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* Remember Me and Forgot Password */}
+              <View style={styles.row}>
+                <Pressable onPress={() => setRememberMe(!rememberMe)} style={styles.checkboxContainer}>
+                  <View
+                    style={[
+                      styles.checkbox,
+                      { borderColor: colors.outline },
+                      rememberMe && { backgroundColor: colors.primary, borderColor: colors.primary },
+                    ]}
+                  >
+                    {rememberMe && <MaterialIcons name="check" size={14} color="#ffffff" />}
+                  </View>
+                  <Text style={[styles.checkboxLabel, { color: colors.textSecondary }]}>Remember me</Text>
+                </Pressable>
+
+                <Pressable>
+                  <Text style={[styles.forgotText, { color: colors.primary }]}>Forgot password?</Text>
+                </Pressable>
+              </View>
+
+              {/* Sign In Button */}
+              <Button title="Sign In" onPress={handleSignIn} variant="primary" style={styles.signInButton} />
+            </View>
+
+            {/* Footer info */}
+            <View style={styles.footer}>
+              <Text style={[styles.footerText, { color: colors.outline }]}>Secure Enterprise Connection</Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </LinearGradient>
+
+      <Modal transparent={true} animationType="fade" visible={isLoading}>
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, { backgroundColor: isDark ? '#111827' : '#ffffff' }]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.modalText, { color: colors.text }]}>
+              Verifying RMC account...
+            </Text>
+          </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  gradientBg: {
     flex: 1,
   },
   scrollContent: {
@@ -258,21 +295,33 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     alignItems: 'center',
-    marginBottom: Spacing.four * 1.5,
+    marginBottom: Spacing.four * 1.2,
     gap: Spacing.two,
   },
   logoBg: {
     width: 64,
     height: 64,
-    borderRadius: 16,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: Spacing.one,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   brandTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     fontFamily: 'System',
+    letterSpacing: -0.5,
   },
   brandSubtitle: {
     fontSize: 14,
@@ -281,12 +330,27 @@ const styles = StyleSheet.create({
   },
   formCard: {
     width: '100%',
+    padding: Spacing.cardPadding,
+    borderRadius: 24,
+    borderWidth: 1,
     gap: Spacing.four,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.05,
+        shadowRadius: 20,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
   formTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     fontFamily: 'System',
+    marginBottom: 4,
   },
   errorBox: {
     flexDirection: 'row',
@@ -307,16 +371,16 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 1,
+    fontWeight: '700',
+    letterSpacing: 1.2,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 8,
-    height: 48,
-    paddingHorizontal: Spacing.two,
+    borderRadius: 12,
+    height: 52,
+    paddingHorizontal: Spacing.three,
   },
   inputIcon: {
     marginRight: Spacing.two,
@@ -346,7 +410,7 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -361,6 +425,8 @@ const styles = StyleSheet.create({
   },
   signInButton: {
     width: '100%',
+    height: 50,
+    borderRadius: 25,
     marginTop: Spacing.two,
   },
   footer: {
@@ -372,22 +438,22 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
   },
   modalContainer: {
-    flex:1,
-    justifyContent:"center",
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-    backgroundColor: 'rgba(0,0,0,0.5)'
+    backgroundColor: 'rgba(0,0,0,0.55)',
   },
   modalContent: {
-    padding: 32,
-    borderRadius: 24,
-    alignItems:'center',
-    minWidth: 200
+    padding: 28,
+    borderRadius: 20,
+    alignItems: 'center',
+    minWidth: 220,
   },
   modalText: {
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: "600",
     marginTop: 16,
     textAlign: 'center',
-    includeFontPadding: false
-  }
+    includeFontPadding: false,
+  },
 });
