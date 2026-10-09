@@ -20,7 +20,7 @@ function TabLayoutInner() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <View style={{ flex: 1 }}>
-        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+        <StatusBar style="light" />
         <AnimatedSplashOverlay />
         {isAuthenticated ? (
           <>

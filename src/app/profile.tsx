@@ -233,9 +233,9 @@ export default function ProfileScreen() {
 
   if (isLoading && !apiUser) {
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
         <AppHeader title="Profile" showNotification={false} />
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={[styles.contentContainer, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </SafeAreaView>
@@ -244,7 +244,7 @@ export default function ProfileScreen() {
 
   if (isEditing) {
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
         <AppHeader 
           title="Edit Profile" 
           showNotification={false} 
@@ -252,9 +252,14 @@ export default function ProfileScreen() {
         />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
+          style={{ flex: 1, backgroundColor: colors.headerBgColor }}
         >
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView 
+            style={[styles.contentContainer, { backgroundColor: colors.background }]}
+            contentContainerStyle={styles.scrollContent} 
+            showsVerticalScrollIndicator={false} 
+            keyboardShouldPersistTaps="handled"
+          >
             <Card style={styles.profileHeaderCard} variant="lowest">
               <View style={[styles.glowBar, { backgroundColor: colors.primary }]} />
               
@@ -371,10 +376,14 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
       <AppHeader title="Profile" showNotification={false} />
       
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={[styles.contentContainer, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+      >
         {/* Profile Card Header */}
         <Card style={styles.profileHeaderCard} variant="lowest">
           <View style={[styles.glowBar, { backgroundColor: colors.primary }]} />
@@ -502,9 +511,15 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  contentContainer: {
+    flex: 1,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: 'hidden',
+  },
   scrollContent: {
     paddingHorizontal: Spacing.containerMargin,
-    paddingTop: Spacing.stackGap,
+    paddingTop: 24, // Added breathing room under rounded corners
     paddingBottom: 100, // Account for bottom tab bar
     gap: Spacing.sectionGap,
   },

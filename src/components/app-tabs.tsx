@@ -1,11 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, useColorScheme, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Platform, StyleSheet, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
 import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 
 function AnimatedTabIcon({ iconName, isFocused, colors, label }: { iconName: string; isFocused: boolean; colors: any; label: string }) {
   const animatedIconStyle = useAnimatedStyle(() => {
@@ -32,7 +32,7 @@ function AnimatedTabIcon({ iconName, isFocused, colors, label }: { iconName: str
     <Animated.View style={[styles.iconContainer, animatedIconStyle]}>
       <View style={[
         styles.iconBg,
-        isFocused && { backgroundColor: colors.primary + '18' }
+        // isFocused && { backgroundColor: colors.primary + '18' }
       ]}>
         <Ionicons
           name={iconName as any}

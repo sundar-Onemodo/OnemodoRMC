@@ -12,19 +12,19 @@ export const Colors = {
     // Basic standard theme values
     text: '#0f172a', // Slate 900
     textSecondary: '#475569', // Slate 600
-    background: '#f8fafc', // Slate 50
-    backgroundElement: '#f1f5f9', // Slate 100
-    backgroundSelected: '#e2e8f0', // Slate 200
+    background: '#F5F7F6', // Off-white/light sage tint
+    backgroundElement: '#eef2ef', // Light green-gray element bg
+    backgroundSelected: '#e2e8f2', 
 
     // Stitch system values
-    primary: '#3b82f6', // Premium Indigo/Blue
-    primaryContainer: '#2563eb',
+    primary: '#1E4E30', // Deep Forest Green
+    primaryContainer: '#1E4E30',
     onPrimary: '#ffffff',
-    onPrimaryContainer: '#1e3a8a',
-    secondary: '#10b981', // Emerald green
-    secondaryContainer: '#a7f3d0',
+    onPrimaryContainer: '#D2E8D7',
+    secondary: '#2E7D32', // Accent Green
+    secondaryContainer: '#D2E8D7',
     onSecondary: '#ffffff',
-    onSecondaryContainer: '#065f46',
+    onSecondaryContainer: '#1E4E30',
     tertiary: '#f59e0b', // Amber
     tertiaryContainer: '#fde68a',
     onTertiary: '#ffffff',
@@ -34,7 +34,7 @@ export const Colors = {
     surfaceContainerLow: '#f8fafc',
     surfaceContainerHigh: '#e2e8f0',
     surfaceContainerLowest: '#ffffff',
-    headerBgColor: '#fafafa',
+    headerBgColor: '#1E4E30', // Same as statusbar
     onSurface: '#0f172a',
     onSurfaceVariant: '#475569',
     outline: '#94a3b8',
@@ -47,13 +47,13 @@ export const Colors = {
     // Basic standard theme values
     text: '#f8fafc',
     textSecondary: '#94a3b8',
-    background: '#090d16', // Deep space dark blue
-    backgroundElement: '#111827',
-    backgroundSelected: '#1e293b',
+    background: '#0B130E', // Dark Forest Green-tinted black
+    backgroundElement: '#141E18',
+    backgroundSelected: '#1C2E24',
 
     // Stitch system values
-    primary: '#60a5fa',
-    primaryContainer: '#2563eb',
+    primary: '#1E4E30',
+    primaryContainer: '#1E4E30',
     onPrimary: '#ffffff',
     onPrimaryContainer: '#dbeafe',
     secondary: '#34d399',
@@ -64,12 +64,12 @@ export const Colors = {
     tertiaryContainer: '#78350f',
     onTertiary: '#ffffff',
     onTertiaryContainer: '#fde68a',
-    surface: '#111827',
-    surfaceContainer: '#1f2937',
-    surfaceContainerLow: '#111827',
-    surfaceContainerHigh: '#374151',
-    surfaceContainerLowest: '#0e1420',
-    headerBgColor: '#fafafa',
+    surface: '#141E18',
+    surfaceContainer: '#1C2E24',
+    surfaceContainerLow: '#141E18',
+    surfaceContainerHigh: '#253B2F',
+    surfaceContainerLowest: '#0A100C',
+    headerBgColor: '#143521', // Darker forest green for dark mode header
     onSurface: '#f8fafc',
     onSurfaceVariant: '#94a3b8',
     outline: '#475569',

@@ -317,33 +317,35 @@ export default function StockDetails() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
       <AppHeader title="Stock Details" showMenu={true} />
       
-      {isloading && stockData.length === 0 ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading stock details...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredData}
-          keyExtractor={(item: stockList) => item.product_id.toString()}
-          renderItem={renderStockList}
-          ListHeaderComponent={renderHeader()}
-          ListEmptyComponent={renderEmptyState}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
-            />
-          }
-        />
-      )}
+      <View style={[styles.contentContainer, { backgroundColor: colors.background }]}>
+        {isloading && stockData.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading stock details...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredData}
+            keyExtractor={(item: stockList) => item.product_id.toString()}
+            renderItem={renderStockList}
+            ListHeaderComponent={renderHeader()}
+            ListEmptyComponent={renderEmptyState}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[colors.primary]}
+                tintColor={colors.primary}
+              />
+            }
+          />
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -352,11 +354,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  contentContainer: {
+    flex: 1,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: 'hidden',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     gap: Spacing.two,
+    paddingTop: 40,
   },
   loadingText: {
     fontSize: 14,
@@ -364,7 +373,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: Spacing.containerMargin,
-    paddingTop: Spacing.stackGap,
+    paddingTop: 24, // Added breathing room under rounded corners
     paddingBottom: 100, // Account for bottom navigation
   },
   headerContainer: {

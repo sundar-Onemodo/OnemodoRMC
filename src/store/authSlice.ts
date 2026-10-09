@@ -53,7 +53,8 @@ export const loginUser = createAsyncThunk(
     }, thunkAPI) => {
         try {
             const res = await axios.post(
-                `https://modormc.com/api/mobile/login`,
+                `https://modormc.com/api/mobile/login`, //live url
+                // `https://curie.modormc.com/api/mobile/login`, // testing url
                 {
                     email: payload.email,
                     password: payload.password,

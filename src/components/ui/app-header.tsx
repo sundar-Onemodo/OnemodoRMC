@@ -39,29 +39,29 @@ export function AppHeader({
   };
 
   return (
-    <View style={[styles.header, { backgroundColor: colors.headerBgColor, borderBottomColor: colors.outlineVariant + '99' }]}>
+    <View style={[styles.header, { backgroundColor: colors.headerBgColor, borderBottomColor: 'transparent' }]}>
       <View style={styles.leftContainer}>
         {onBackPress || router.canGoBack() ? (
           <Pressable
             onPress={handleBack}
             style={({ pressed }) => [
               styles.iconButton,
-              pressed && { backgroundColor: colors.surfaceContainerHigh },
+             { backgroundColor: 'rgba(255, 255, 255, 0.15)' },
             ]}>
-            <MaterialIcons name="arrow-back" size={24} color={"#595d5c"} />
+            <MaterialIcons name="arrow-back" size={24} color={"#ffffff"} />
           </Pressable>
         ) : showMenu ? (
           <Pressable
             onPress={toggleDrawer}
             style={({ pressed }) => [
               styles.iconButton,
-              pressed && { backgroundColor: colors.surfaceContainerHigh },
+              pressed && { backgroundColor: 'rgba(255, 255, 255, 0.15)' },
             ]}>
-            <MaterialIcons name="menu" size={24} color={'#595d5c'} />
+            <MaterialIcons name="menu" size={24} color={'#ffffff'} />
           </Pressable>
         ) : null}
         
-        <Text style={[styles.title, { color: '#434847' }]} ellipsizeMode='tail' numberOfLines={1}>
+        <Text style={[styles.title, { color: '#ffffff' }]} ellipsizeMode='tail' numberOfLines={1}>
           {plant_name}
         </Text>
       </View>
@@ -72,9 +72,9 @@ export function AppHeader({
           <Pressable
             style={({ pressed }) => [
               styles.iconButton,
-              pressed && { backgroundColor: colors.surfaceContainerHigh },
+               { backgroundColor: 'rgba(255, 255, 255, 0.15)' },
             ]}>
-            <MaterialIcons name="notifications-none" size={24} color={'#595d5c'} />
+            <MaterialIcons name="notifications-none" size={24} color={'#ffffff'} />
           </Pressable>
         )}
       </View>

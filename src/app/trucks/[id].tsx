@@ -82,12 +82,13 @@ export default function TruckDetailsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
       <AppHeader
         title={truck.number}
         onBackPress={() => router.back()}
       />
       <FlatList
+        style={[styles.contentContainer, { backgroundColor: colors.background }]}
         data={tripHistory}
         renderItem={renderTripItem}
         keyExtractor={(item) => item.id}
@@ -103,9 +104,15 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  contentContainer: {
+    flex: 1,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: 'hidden',
+  },
   listContent: {
     paddingHorizontal: Spacing.containerMargin,
-    paddingTop: Spacing.stackGap,
+    paddingTop: 24, // Added breathing room under rounded corners
     paddingBottom: 40,
   },
   headerContainer: {

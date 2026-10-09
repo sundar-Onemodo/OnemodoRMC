@@ -2,18 +2,25 @@ import { RootState } from "@/store/store";
 import { Feather, FontAwesome5, Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSelector } from "react-redux";
 import { baseURL } from "../baseUrl/baseUrlAPI";
 
 export default function SalesTripTruck() {
+  const { token, plant_id } = useSelector((state: RootState) => state.auth);
+  const { startDate, endDate } = useSelector(
+    (state: RootState) => state.dateFilter,
+  );
 
-    const {token, plant_id} = useSelector((state:RootState) => state.auth)
-    const { startDate, endDate } = useSelector((state: RootState) => state.dateFilter);
-
-    const [isloading, setIsLoading] = useState(false)
-    const [tripData, setTripData] = useState<any[]>([]);
-    const [expandedTruckId, setExpandedTruckId] = useState<number | null>(null);
+  const [isloading, setIsLoading] = useState(false);
+  const [tripData, setTripData] = useState<any[]>([]);
+  const [expandedTruckId, setExpandedTruckId] = useState<number | null>(null);
   const [openSections, setOpenSections] = useState({
     tripsDetails: true,
   });
@@ -21,205 +28,204 @@ export default function SalesTripTruck() {
   const toggleSection = (section: keyof typeof openSections) => {
     setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
-    const toggleTruckExpand = (truckId: number) => {
-        setExpandedTruckId((prevId)=> (prevId === truckId ? null : truckId));
-    };
+  const toggleTruckExpand = (truckId: number) => {
+    setExpandedTruckId((prevId) => (prevId === truckId ? null : truckId));
+  };
 
-    useEffect(()=>{
-        tripDetailsAPI()
-    },[token, plant_id, startDate, endDate])
+  useEffect(() => {
+    tripDetailsAPI();
+  }, [token, plant_id, startDate, endDate]);
 
-    const tripDetailsAPI = async () => {
-        if(!token) return;
+  const tripDetailsAPI = async () => {
+    if (!token) return;
 
-        try{
-            setIsLoading(true)
-            const trimAPI = token.includes('|') ? token.split('|')[1] : token
-            const res = await axios
-                    .get(`${baseURL}/truck-dispatch-details?plant_id=${plant_id}&from_date=${startDate}&to_date=${endDate}`,
-                        {
-                            headers:{
-                                Authorization: `Bearer ${trimAPI}`,
-                                Accept: "application/json",
-                                "Content-Type": "application/json"
-                            }
-                        }
-                    )
-                    setTripData(res.data.data)
-        }catch(err){
-            console.log('error')
-        }finally{
-            setIsLoading(false)
-        }
+    try {
+      setIsLoading(true);
+      const trimAPI = token.includes("|") ? token.split("|")[1] : token;
+      const res = await axios.get(
+        `${baseURL}/truck-dispatch-details?plant_id=${plant_id}&from_date=${startDate}&to_date=${endDate}`,
+        {
+          headers: {
+            Authorization: `Bearer ${trimAPI}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      setTripData(res.data.data);
+    } catch (err) {
+      console.log("error");
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    const formatQty = (value: any) => {
-        const num = parseFloat(value);
-        if(isNaN(num)) return "0.00";
-        return num.toLocaleString("en-IN",{
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2,
-        });
-    };
+  const formatQty = (value: any) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return "0.00";
+    return num.toLocaleString("en-IN", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+  };
 
-
-    return (
-        <View style={styles.section}>
-            <TouchableOpacity
-                style={styles.sectionHeader}
-                onPress={() => toggleSection("tripsDetails")}
-                activeOpacity={0.7}
-            >
-                <View style={styles.sectionHeaderLeft}>
-                    <View style={[styles.sectionIcon, { backgroundColor: "#FFF3E0" }]}>
-                        <FontAwesome5 name="truck-moving" size={16} color="#ff9d06" />
-                    </View>
-                    <Text style={styles.sectionTitle}>Truck-Wise Summary</Text>
-                </View>
-                <Feather
-                    name={openSections.tripsDetails ? "chevron-up" : "chevron-down"}
-                    size={22}
-                    color="#1c74fd"
-                />
-            </TouchableOpacity>
-
-            {openSections.tripsDetails && (
-                <View style={styles.tableContainer}>
-                    {isloading ? (
-                        <View style={styles.loadingWrapper}>
-                            <ActivityIndicator size="small" color="#1c74fd" />
-                            <Text style={styles.loadingText}>Syncing truck records...</Text>
-                        </View>
-                    ) : tripData.length === 0 ? (
-                        <View style={styles.emptyWrapper}>
-                            <Text style={styles.emptyText}>
-                                No dispatch logs available for selected date intervals.
-                            </Text>
-                        </View>
-                    ) : (
-                        <>
-                            <View style={styles.tableHeader}>
-                                <Text
-                                    style={[
-                                        styles.tableHeaderCell,
-                                        { flex: 1.5, textAlign: "left", paddingLeft: 6 },
-                                    ]}
-                                >
-                                    Vehicle No
-                                </Text>
-                                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Count</Text>
-                                <Text style={[styles.tableHeaderCell, { flex: 1.2 }]}>
-                                    Batching (CBM)
-                                </Text>
-                                <Text style={[styles.tableHeaderCell, { flex: 0.4 }]} />
-                            </View>
-
-                            {tripData.map((item) => {
-                                const isExpanded = expandedTruckId === item.truck_id;
-                                // ✅ Fix: Access the nested qty values correctly
-                                const dispatchCount =
-                                    item.total_dispatch_count?.total_count ?? 0;
-                                const batchSize = item.total_batch_size?.qty ?? 0;
-
-                                return (
-                                    <View key={item.truck_id} style={styles.rowContainer}>
-                                        <TouchableOpacity
-                                            onPress={() => toggleTruckExpand(item.truck_id)}
-                                            style={[
-                                                styles.tableRow,
-                                                isExpanded && styles.activeTableRow,
-                                            ]}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Text
-                                                style={[
-                                                    styles.tableCell,
-                                                    {
-                                                        flex: 1.5,
-                                                        textAlign: "left",
-                                                        fontWeight: "600",
-                                                        color: "#1e293b",
-                                                    },
-                                                ]}
-                                            >
-                                                {item.truck_registration}
-                                            </Text>
-                                            <Text
-                                                style={[
-                                                    styles.tableCell,
-                                                    {
-                                                        flex: 1,
-                                                        textAlign: "center",
-                                                        color: "#475569",
-                                                        fontWeight: "500",
-                                                    },
-                                                ]}
-                                            >
-                                                {dispatchCount}
-                                            </Text>
-                                            <Text
-                                                style={[
-                                                    styles.tableCell,
-                                                    {
-                                                        flex: 1.2,
-                                                        textAlign: "center",
-                                                        color: "#2cc55c",
-                                                        fontWeight: "700",
-                                                    },
-                                                ]}
-                                            >
-                                                {formatQty(batchSize)}
-                                            </Text>
-
-                                            <View style={{ flex: 0.4, alignItems: "center" }}>
-                                                <Ionicons
-                                                    name={
-                                                        isExpanded
-                                                            ? "chevron-up-circle"
-                                                            : "chevron-down-circle"
-                                                    }
-                                                    size={18}
-                                                    color="#1c74fd"
-                                                />
-                                            </View>
-                                        </TouchableOpacity>
-
-                                        {isExpanded && (
-                                            <View style={styles.expandedDetailsPanel}>
-                                                <View style={styles.detailsGrid}>
-                                                    <View style={styles.detailBox}>
-                                                        <Text style={styles.detailLabel}>
-                                                            TOTAL LOAD (CFT)
-                                                        </Text>
-                                                        <Text style={styles.detailValue}>
-                                                            {/* ✅ Fix: Access nested cft qty correctly */}
-                                                            {formatQty(item.total_qty?.cft?.qty)}{" "}
-                                                            <Text style={styles.detailUnit}>cft</Text>
-                                                        </Text>
-                                                    </View>
-
-                                                    <View style={styles.detailBox}>
-                                                        <Text style={styles.detailLabel}>
-                                                            TOTAL LOAD (MTR)
-                                                        </Text>
-                                                        <Text style={styles.detailValue}>
-                                                            {/* ✅ Fix: Access nested mtr qty correctly */}
-                                                            {formatQty(item.total_qty?.mtr?.qty)}{" "}
-                                                            <Text style={styles.detailUnit}>mtr</Text>
-                                                        </Text>
-                                                    </View>
-                                                </View>
-                                            </View>
-                                        )}
-                                    </View>
-                                );
-                            })}
-                        </>
-                    )}
-                </View>
-            )}
+  return (
+    <View style={styles.section}>
+      <TouchableOpacity
+        style={styles.sectionHeader}
+        onPress={() => toggleSection("tripsDetails")}
+        activeOpacity={0.7}
+      >
+        <View style={styles.sectionHeaderLeft}>
+          <View style={[styles.sectionIcon, { backgroundColor: "#FFF3E0" }]}>
+            <FontAwesome5 name="truck-moving" size={16} color="#ff9d06" />
+          </View>
+          <Text style={styles.sectionTitle}>Truck-Wise Summary</Text>
         </View>
-    );
+        <Feather
+          name={openSections.tripsDetails ? "chevron-up" : "chevron-down"}
+          size={22}
+          color="#1c74fd"
+        />
+      </TouchableOpacity>
+
+      {openSections.tripsDetails && (
+        <View style={styles.tableContainer}>
+          {isloading ? (
+            <View style={styles.loadingWrapper}>
+              <ActivityIndicator size="small" color="#1c74fd" />
+              <Text style={styles.loadingText}>Syncing truck records...</Text>
+            </View>
+          ) : tripData.length === 0 ? (
+            <View style={styles.emptyWrapper}>
+              <Text style={styles.emptyText}>
+                No dispatch logs available for selected date intervals.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.tableHeader}>
+                <Text
+                  style={[
+                    styles.tableHeaderCell,
+                    { flex: 1.5, textAlign: "left", paddingLeft: 6 },
+                  ]}
+                >
+                  Vehicle No
+                </Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Count</Text>
+                <Text style={[styles.tableHeaderCell, { flex: 1.2 }]}>
+                  Batching (CBM)
+                </Text>
+                <Text style={[styles.tableHeaderCell, { flex: 0.4 }]} />
+              </View>
+
+              {tripData.map((item) => {
+                const isExpanded = expandedTruckId === item.truck_id;
+                // ✅ Fix: Access the nested qty values correctly
+                const dispatchCount =
+                  item.total_dispatch_count?.total_count ?? 0;
+                const batchSize = item.total_batch_size?.qty ?? 0;
+
+                return (
+                  <View key={item.truck_id} style={styles.rowContainer}>
+                    <TouchableOpacity
+                      onPress={() => toggleTruckExpand(item.truck_id)}
+                      style={[
+                        styles.tableRow,
+                        isExpanded && styles.activeTableRow,
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.tableCell,
+                          {
+                            flex: 1.5,
+                            textAlign: "left",
+                            fontWeight: "600",
+                            color: "#1e293b",
+                          },
+                        ]}
+                      >
+                        {item.truck_registration}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.tableCell,
+                          {
+                            flex: 1,
+                            textAlign: "center",
+                            color: "#475569",
+                            fontWeight: "500",
+                          },
+                        ]}
+                      >
+                        {dispatchCount}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.tableCell,
+                          {
+                            flex: 1.2,
+                            textAlign: "center",
+                            color: "#2cc55c",
+                            fontWeight: "700",
+                          },
+                        ]}
+                      >
+                        {formatQty(batchSize)}
+                      </Text>
+
+                      <View style={{ flex: 0.4, alignItems: "center" }}>
+                        <Ionicons
+                          name={
+                            isExpanded
+                              ? "chevron-up-circle"
+                              : "chevron-down-circle"
+                          }
+                          size={18}
+                          color="#1c74fd"
+                        />
+                      </View>
+                    </TouchableOpacity>
+
+                    {isExpanded && (
+                      <View style={styles.expandedDetailsPanel}>
+                        <View style={styles.detailsGrid}>
+                          <View style={styles.detailBox}>
+                            <Text style={styles.detailLabel}>
+                              TOTAL LOAD (CFT)
+                            </Text>
+                            <Text style={styles.detailValue}>
+                              {/* ✅ Fix: Access nested cft qty correctly */}
+                              {formatQty(item.total_qty?.cft?.qty)}{" "}
+                              <Text style={styles.detailUnit}>cft</Text>
+                            </Text>
+                          </View>
+
+                          <View style={styles.detailBox}>
+                            <Text style={styles.detailLabel}>
+                              TOTAL LOAD (MTR)
+                            </Text>
+                            <Text style={styles.detailValue}>
+                              {/* ✅ Fix: Access nested mtr qty correctly */}
+                              {formatQty(item.total_qty?.mtr?.qty)}{" "}
+                              <Text style={styles.detailUnit}>mtr</Text>
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </>
+          )}
+        </View>
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
