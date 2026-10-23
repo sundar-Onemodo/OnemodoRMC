@@ -1,13 +1,33 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
-import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import React from "react";
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+} from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  withSpring,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Colors } from '@/constants/theme';
+import { Colors } from "@/constants/theme";
 
-function AnimatedTabIcon({ iconName, isFocused, colors, label }: { iconName: string; isFocused: boolean; colors: any; label: string }) {
+function AnimatedTabIcon({
+  iconName,
+  isFocused,
+  colors,
+  label,
+}: {
+  iconName: string;
+  isFocused: boolean;
+  colors: any;
+  label: string;
+}) {
   const animatedIconStyle = useAnimatedStyle(() => {
     return {
       transform: [
@@ -30,26 +50,36 @@ function AnimatedTabIcon({ iconName, isFocused, colors, label }: { iconName: str
 
   return (
     <Animated.View style={[styles.iconContainer, animatedIconStyle]}>
-      <View style={[
-        styles.iconBg,
-        // isFocused && { backgroundColor: colors.primary + '18' }
-      ]}>
+      <View
+        style={[
+          styles.iconBg,
+          // isFocused && { backgroundColor: colors.primary + '18' }
+        ]}
+      >
         <Ionicons
           name={iconName as any}
           size={20}
           color={isFocused ? colors.primary : colors.textSecondary}
         />
       </View>
-      <Text style={[
-        styles.tabLabel,
-        {
-          color: isFocused ? colors.primary : colors.textSecondary,
-          fontWeight: isFocused ? '700' : '500',
-        }
-      ]}>
+      <Text
+        style={[
+          styles.tabLabel,
+          {
+            color: isFocused ? colors.primary : colors.textSecondary,
+            fontWeight: isFocused ? "700" : "500",
+          },
+        ]}
+      >
         {label}
       </Text>
-      <Animated.View style={[styles.activeDot, { backgroundColor: colors.primary }, animatedIndicatorStyle]} />
+      <Animated.View
+        style={[
+          styles.activeDot,
+          { backgroundColor: colors.primary },
+          animatedIndicatorStyle,
+        ]}
+      />
     </Animated.View>
   );
 }
@@ -57,28 +87,39 @@ function AnimatedTabIcon({ iconName, isFocused, colors, label }: { iconName: str
 function CustomTabBar({ state, descriptors, navigation }: any) {
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const colors = Colors[scheme === "dark" ? "dark" : "light"];
 
   return (
-    <View style={[styles.tabBarWrapper, { bottom: Math.max(insets.bottom, 12) }]}>
-      <View style={[
-        styles.tabBar,
-        {
-          backgroundColor: scheme === 'dark' ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.92)',
-          borderColor: colors.outlineVariant + '2A',
-        }
-      ]}>
+    <View
+      style={[styles.tabBarWrapper, { bottom: Math.max(insets.bottom, 12) }]}
+    >
+      <View
+        style={[
+          styles.tabBar,
+          {
+            backgroundColor:
+              scheme === "dark"
+                ? "rgba(15, 23, 42, 0.92)"
+                : "rgba(255, 255, 255, 0.92)",
+            borderColor: colors.outlineVariant + "2A",
+          },
+        ]}
+      >
         {state.routes.map((route: any, index: number) => {
           const { options } = descriptors[route.key];
           const label =
             options.tabBarLabel !== undefined
               ? options.tabBarLabel
               : options.title !== undefined
-              ? options.title
-              : route.name;
+                ? options.title
+                : route.name;
 
           // Only render tab buttons for the main screens
-          if (['index', 'trucks', 'customers', 'profile'].indexOf(route.name) === -1) {
+          if (
+            ["index", "trucks", "customers", "profile", "quotation"].indexOf(
+              route.name,
+            ) === -1
+          ) {
             return null;
           }
 
@@ -86,7 +127,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 
           const onPress = () => {
             const event = navigation.emit({
-              type: 'tabPress',
+              type: "tabPress",
               target: route.key,
               canPreventDefault: true,
             });
@@ -98,26 +139,29 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 
           const onLongPress = () => {
             navigation.emit({
-              type: 'tabLongPress',
+              type: "tabLongPress",
               target: route.key,
             });
           };
 
-          let iconName = 'home-outline';
-          let displayLabel = 'Home';
+          let iconName = "home-outline";
+          let displayLabel = "Home";
 
-          if (route.name === 'index') {
-            iconName = isFocused ? 'grid' : 'grid-outline';
-            displayLabel = 'Dashboard';
-          } else if (route.name === 'trucks') {
-            iconName = isFocused ? 'cube' : 'cube-outline';
-            displayLabel = 'Stock';
-          } else if (route.name === 'customers') {
-            iconName = isFocused ? 'people' : 'people-outline';
-            displayLabel = 'Customers';
-          } else if (route.name === 'profile') {
-            iconName = isFocused ? 'person' : 'person-outline';
-            displayLabel = 'Profile';
+          if (route.name === "index") {
+            iconName = isFocused ? "grid" : "grid-outline";
+            displayLabel = "Dashboard";
+          } else if (route.name === "trucks") {
+            iconName = isFocused ? "cube" : "cube-outline";
+            displayLabel = "Stock";
+          } else if (route.name === "customers") {
+            iconName = isFocused ? "people" : "people-outline";
+            displayLabel = "Customers";
+          } else if (route.name === "profile") {
+            iconName = isFocused ? "person" : "person-outline";
+            displayLabel = "Profile";
+          } else if (route.name === "quotation") {
+            iconName = isFocused ? "cart" : "cart-outline";
+            displayLabel = "quotation";
           }
 
           return (
@@ -154,32 +198,35 @@ export default function AppTabs() {
       }}
       tabBar={(props) => <CustomTabBar {...props} />}
     >
-      <Tabs.Screen name="index" options={{ title: 'Dashboard' }} />
-      <Tabs.Screen name="trucks" options={{ title: 'Stock' }} />
-      <Tabs.Screen name="customers" options={{ title: 'Customers' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen name="index" options={{ title: "Dashboard" }} />
+      <Tabs.Screen name="trucks" options={{ title: "Stock" }} />
+      <Tabs.Screen name="customers" options={{ title: "Customers" }} />
+      <Tabs.Screen name="profile" options={{ title: "Profile" }} />
+      <Tabs.Screen name="quotation" options={{ title: "Quotation" }} />
+      <Tabs.Screen name="sales" options={{ href: null }} />
+      <Tabs.Screen name="login" options={{ href: null }} />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
   tabBarWrapper: {
-    position: 'absolute',
+    position: "absolute",
     left: 16,
     right: 16,
     zIndex: 99,
   },
   tabBar: {
-    flexDirection: 'row',
+    flexDirection: "row",
     height: 64,
     borderRadius: 32,
     borderWidth: 1,
     paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    justifyContent: "space-between",
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
+        shadowColor: "#000",
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.1,
         shadowRadius: 16,
@@ -191,34 +238,34 @@ const styles = StyleSheet.create({
   },
   tabItem: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
   },
   iconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 2,
-    position: 'relative',
-    height: '100%',
-    width: '100%',
+    position: "relative",
+    height: "100%",
+    width: "100%",
   },
   iconBg: {
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   tabLabel: {
     fontSize: 10,
-    fontFamily: 'System',
+    fontFamily: "System",
     marginTop: 2,
   },
   activeDot: {
     height: 3,
     borderRadius: 1.5,
-    position: 'absolute',
+    position: "absolute",
     bottom: 2,
   },
 });

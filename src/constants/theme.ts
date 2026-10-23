@@ -12,33 +12,33 @@ export const Colors = {
     // Basic standard theme values
     text: '#0f172a', // Slate 900
     textSecondary: '#475569', // Slate 600
-    background: '#F5F7F6', // Off-white/light sage tint
-    backgroundElement: '#eef2ef', // Light green-gray element bg
-    backgroundSelected: '#e2e8f2', 
+    background: '#F1F5F9', // Premium Slate 100 Background
+    backgroundElement: '#E2E8F0', // Slate 200
+    backgroundSelected: '#CBD5E1', 
 
-    // Stitch system values
-    primary: '#1E4E30', // Deep Forest Green
-    primaryContainer: '#1E4E30',
+    // System brand values
+    primary: '#1D4ED8', // Rich Executive Royal Blue
+    primaryContainer: '#2563EB', // Vibrant Blue
     onPrimary: '#ffffff',
-    onPrimaryContainer: '#D2E8D7',
-    secondary: '#2E7D32', // Accent Green
-    secondaryContainer: '#D2E8D7',
+    onPrimaryContainer: '#DBEAFE',
+    secondary: '#0284C7', // Ocean / Cobalt Accent
+    secondaryContainer: '#E0F2FE',
     onSecondary: '#ffffff',
-    onSecondaryContainer: '#1E4E30',
-    tertiary: '#f59e0b', // Amber
-    tertiaryContainer: '#fde68a',
+    onSecondaryContainer: '#0369A1',
+    tertiary: '#F59E0B', // Amber Gold (Cash)
+    tertiaryContainer: '#FEF3C7',
     onTertiary: '#ffffff',
-    onTertiaryContainer: '#78350f',
+    onTertiaryContainer: '#78350F',
     surface: '#ffffff',
-    surfaceContainer: '#f1f5f9',
-    surfaceContainerLow: '#f8fafc',
-    surfaceContainerHigh: '#e2e8f0',
+    surfaceContainer: '#ffffff',
+    surfaceContainerLow: '#F8FAFC',
+    surfaceContainerHigh: '#E2E8F0',
     surfaceContainerLowest: '#ffffff',
-    headerBgColor: '#1E4E30', // Same as statusbar
+    headerBgColor: '#0F172A', // Deep Midnight Navy Header
     onSurface: '#0f172a',
     onSurfaceVariant: '#475569',
     outline: '#94a3b8',
-    outlineVariant: '#cbd5e1',
+    outlineVariant: '#E2E8F0',
     error: '#ef4444',
     errorContainer: '#fee2e2',
     onError: '#ffffff',
@@ -47,33 +47,33 @@ export const Colors = {
     // Basic standard theme values
     text: '#f8fafc',
     textSecondary: '#94a3b8',
-    background: '#0B130E', // Dark Forest Green-tinted black
-    backgroundElement: '#141E18',
-    backgroundSelected: '#1C2E24',
+    background: '#090D16', // Deep Obsidian Slate
+    backgroundElement: '#111827',
+    backgroundSelected: '#1E293B',
 
-    // Stitch system values
-    primary: '#1E4E30',
-    primaryContainer: '#1E4E30',
+    // System brand values
+    primary: '#3B82F6', // Electric Vibrant Blue
+    primaryContainer: '#1D4ED8',
     onPrimary: '#ffffff',
-    onPrimaryContainer: '#dbeafe',
-    secondary: '#34d399',
-    secondaryContainer: '#065f46',
+    onPrimaryContainer: '#DBEAFE',
+    secondary: '#38BDF8', // Cyan Light Accent
+    secondaryContainer: '#0C4A6E',
     onSecondary: '#ffffff',
-    onSecondaryContainer: '#a7f3d0',
-    tertiary: '#fbbf24',
-    tertiaryContainer: '#78350f',
+    onSecondaryContainer: '#BAE6FD',
+    tertiary: '#FBBF24',
+    tertiaryContainer: '#78350F',
     onTertiary: '#ffffff',
-    onTertiaryContainer: '#fde68a',
-    surface: '#141E18',
-    surfaceContainer: '#1C2E24',
-    surfaceContainerLow: '#141E18',
-    surfaceContainerHigh: '#253B2F',
-    surfaceContainerLowest: '#0A100C',
-    headerBgColor: '#143521', // Darker forest green for dark mode header
+    onTertiaryContainer: '#FDE68A',
+    surface: '#111827',
+    surfaceContainer: '#1E293B',
+    surfaceContainerLow: '#0F172A',
+    surfaceContainerHigh: '#334155',
+    surfaceContainerLowest: '#090D16',
+    headerBgColor: '#070A12', // Ultra Deep Midnight
     onSurface: '#f8fafc',
     onSurfaceVariant: '#94a3b8',
     outline: '#475569',
-    outlineVariant: '#374151',
+    outlineVariant: '#334155',
     error: '#f87171',
     errorContainer: '#7f1d1d',
     onError: '#7f1d1d',

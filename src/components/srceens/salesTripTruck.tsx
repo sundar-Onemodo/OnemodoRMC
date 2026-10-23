@@ -1,3 +1,4 @@
+import { Colors } from "@/constants/theme";
 import { RootState } from "@/store/store";
 import { Feather, FontAwesome5, Ionicons } from "@expo/vector-icons";
 import axios from "axios";
@@ -8,11 +9,15 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useColorScheme,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { baseURL } from "../baseUrl/baseUrlAPI";
 
 export default function SalesTripTruck() {
+  const scheme = useColorScheme();
+  const colors = Colors[scheme === "dark" ? "dark" : "light"];
+
   const { token, plant_id } = useSelector((state: RootState) => state.auth);
   const { startDate, endDate } = useSelector(
     (state: RootState) => state.dateFilter,
@@ -52,9 +57,12 @@ export default function SalesTripTruck() {
           },
         },
       );
-      setTripData(res.data.data);
+      console.log("res.data", res.data);
+
+      setTripData(res.data.data || []);
     } catch (err) {
-      console.log("error");
+      console.log("Error fetching truck dispatch details:", err);
+      setTripData([]);
     } finally {
       setIsLoading(false);
     }
@@ -70,22 +78,47 @@ export default function SalesTripTruck() {
   };
 
   return (
-    <View style={styles.section}>
+    <View
+      style={[
+        styles.section,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.outlineVariant + "33",
+        },
+      ]}
+    >
       <TouchableOpacity
-        style={styles.sectionHeader}
+        style={[
+          styles.sectionHeader,
+          {
+            borderBottomColor: colors.outlineVariant + "22",
+            backgroundColor: colors.surface,
+          },
+        ]}
         onPress={() => toggleSection("tripsDetails")}
         activeOpacity={0.7}
       >
         <View style={styles.sectionHeaderLeft}>
-          <View style={[styles.sectionIcon, { backgroundColor: "#FFF3E0" }]}>
-            <FontAwesome5 name="truck-moving" size={16} color="#ff9d06" />
+          <View
+            style={[
+              styles.sectionIcon,
+              { backgroundColor: colors.primary + "14" },
+            ]}
+          >
+            <FontAwesome5
+              name="truck-moving"
+              size={15}
+              color={colors.primary}
+            />
           </View>
-          <Text style={styles.sectionTitle}>Truck-Wise Summary</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Truck-Wise Summary
+          </Text>
         </View>
         <Feather
           name={openSections.tripsDetails ? "chevron-up" : "chevron-down"}
           size={22}
-          color="#1c74fd"
+          color={colors.primary}
         />
       </TouchableOpacity>
 
@@ -93,28 +126,54 @@ export default function SalesTripTruck() {
         <View style={styles.tableContainer}>
           {isloading ? (
             <View style={styles.loadingWrapper}>
-              <ActivityIndicator size="small" color="#1c74fd" />
-              <Text style={styles.loadingText}>Syncing truck records...</Text>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text
+                style={[styles.loadingText, { color: colors.textSecondary }]}
+              >
+                Syncing truck records...
+              </Text>
             </View>
           ) : tripData.length === 0 ? (
             <View style={styles.emptyWrapper}>
-              <Text style={styles.emptyText}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                 No dispatch logs available for selected date intervals.
               </Text>
             </View>
           ) : (
             <>
-              <View style={styles.tableHeader}>
+              <View
+                style={[
+                  styles.tableHeader,
+                  { backgroundColor: colors.surfaceContainerHigh },
+                ]}
+              >
                 <Text
                   style={[
                     styles.tableHeaderCell,
-                    { flex: 1.5, textAlign: "left", paddingLeft: 6 },
+                    {
+                      flex: 1.5,
+                      textAlign: "left",
+                      paddingLeft: 6,
+                      color: colors.textSecondary,
+                    },
                   ]}
                 >
                   Vehicle No
                 </Text>
-                <Text style={[styles.tableHeaderCell, { flex: 1 }]}>Count</Text>
-                <Text style={[styles.tableHeaderCell, { flex: 1.2 }]}>
+                <Text
+                  style={[
+                    styles.tableHeaderCell,
+                    { flex: 1, color: colors.textSecondary },
+                  ]}
+                >
+                  Count
+                </Text>
+                <Text
+                  style={[
+                    styles.tableHeaderCell,
+                    { flex: 1.2, color: colors.textSecondary },
+                  ]}
+                >
                   Batching (CBM)
                 </Text>
                 <Text style={[styles.tableHeaderCell, { flex: 0.4 }]} />
@@ -122,18 +181,28 @@ export default function SalesTripTruck() {
 
               {tripData.map((item) => {
                 const isExpanded = expandedTruckId === item.truck_id;
-                // ✅ Fix: Access the nested qty values correctly
                 const dispatchCount =
                   item.total_dispatch_count?.total_count ?? 0;
                 const batchSize = item.total_batch_size?.qty ?? 0;
 
                 return (
-                  <View key={item.truck_id} style={styles.rowContainer}>
+                  <View
+                    key={item.truck_id}
+                    style={[
+                      styles.rowContainer,
+                      {
+                        backgroundColor: colors.surfaceContainerLow,
+                        borderColor: colors.outlineVariant + "22",
+                      },
+                    ]}
+                  >
                     <TouchableOpacity
                       onPress={() => toggleTruckExpand(item.truck_id)}
                       style={[
                         styles.tableRow,
-                        isExpanded && styles.activeTableRow,
+                        isExpanded && {
+                          backgroundColor: colors.primary + "0C",
+                        },
                       ]}
                       activeOpacity={0.7}
                     >
@@ -144,7 +213,7 @@ export default function SalesTripTruck() {
                             flex: 1.5,
                             textAlign: "left",
                             fontWeight: "600",
-                            color: "#1e293b",
+                            color: colors.text,
                           },
                         ]}
                       >
@@ -156,7 +225,7 @@ export default function SalesTripTruck() {
                           {
                             flex: 1,
                             textAlign: "center",
-                            color: "#475569",
+                            color: colors.textSecondary,
                             fontWeight: "500",
                           },
                         ]}
@@ -169,7 +238,7 @@ export default function SalesTripTruck() {
                           {
                             flex: 1.2,
                             textAlign: "center",
-                            color: "#2cc55c",
+                            color: colors.primary,
                             fontWeight: "700",
                           },
                         ]}
@@ -185,31 +254,73 @@ export default function SalesTripTruck() {
                               : "chevron-down-circle"
                           }
                           size={18}
-                          color="#1c74fd"
+                          color={isExpanded ? colors.primary : colors.outline}
                         />
                       </View>
                     </TouchableOpacity>
 
                     {isExpanded && (
-                      <View style={styles.expandedDetailsPanel}>
+                      <View
+                        style={[
+                          styles.expandedDetailsPanel,
+                          {
+                            backgroundColor: colors.surface,
+                            borderTopColor: colors.outlineVariant + "22",
+                          },
+                        ]}
+                      >
                         <View style={styles.detailsGrid}>
-                          <View style={styles.detailBox}>
-                            <Text style={styles.detailLabel}>
+                          <View
+                            style={[
+                              styles.detailBox,
+                              {
+                                backgroundColor: colors.surfaceContainerLow,
+                                borderColor: colors.outlineVariant + "22",
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.detailLabel,
+                                { color: colors.textSecondary },
+                              ]}
+                            >
                               TOTAL LOAD (CFT)
                             </Text>
-                            <Text style={styles.detailValue}>
-                              {/* ✅ Fix: Access nested cft qty correctly */}
+                            <Text
+                              style={[
+                                styles.detailValue,
+                                { color: colors.text },
+                              ]}
+                            >
                               {formatQty(item.total_qty?.cft?.qty)}{" "}
                               <Text style={styles.detailUnit}>cft</Text>
                             </Text>
                           </View>
 
-                          <View style={styles.detailBox}>
-                            <Text style={styles.detailLabel}>
+                          <View
+                            style={[
+                              styles.detailBox,
+                              {
+                                backgroundColor: colors.surfaceContainerLow,
+                                borderColor: colors.outlineVariant + "22",
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.detailLabel,
+                                { color: colors.textSecondary },
+                              ]}
+                            >
                               TOTAL LOAD (MTR)
                             </Text>
-                            <Text style={styles.detailValue}>
-                              {/* ✅ Fix: Access nested mtr qty correctly */}
+                            <Text
+                              style={[
+                                styles.detailValue,
+                                { color: colors.text },
+                              ]}
+                            >
                               {formatQty(item.total_qty?.mtr?.qty)}{" "}
                               <Text style={styles.detailUnit}>mtr</Text>
                             </Text>
@@ -230,12 +341,15 @@ export default function SalesTripTruck() {
 
 const styles = StyleSheet.create({
   section: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
+    borderRadius: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#eeeff4",
     overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -243,9 +357,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
   },
   sectionHeaderLeft: {
     flexDirection: "row",
@@ -262,7 +374,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1e293b",
   },
   tableContainer: {
     padding: 12,
@@ -271,22 +382,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingVertical: 10,
     paddingHorizontal: 8,
-    backgroundColor: "#f1f5f9",
     borderRadius: 12,
     marginBottom: 6,
   },
   tableHeaderCell: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#475569",
     textAlign: "center",
   },
   rowContainer: {
     marginBottom: 6,
     borderRadius: 12,
-    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#f1f5f9",
     overflow: "hidden",
   },
   tableRow: {
@@ -295,17 +402,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 8,
   },
-  activeTableRow: {
-    backgroundColor: "rgba(28, 116, 253, 0.04)",
-  },
   tableCell: {
     fontSize: 13,
   },
   expandedDetailsPanel: {
-    backgroundColor: "#f8fafc",
     padding: 12,
     borderTopWidth: 1,
-    borderTopColor: "#edf2f7",
   },
   detailsGrid: {
     flexDirection: "row",
@@ -313,23 +415,19 @@ const styles = StyleSheet.create({
   },
   detailBox: {
     flex: 1,
-    backgroundColor: "#fff",
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
   },
   detailLabel: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#64748b",
     marginBottom: 4,
     letterSpacing: 0.2,
   },
   detailValue: {
     fontSize: 14,
     fontWeight: "bold",
-    color: "#1e293b",
   },
   detailUnit: {
     fontSize: 11,
@@ -345,7 +443,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 13,
-    color: "#64748b",
   },
   emptyWrapper: {
     padding: 24,
@@ -354,7 +451,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 13,
-    color: "#94a3b8",
     textAlign: "center",
   },
 });

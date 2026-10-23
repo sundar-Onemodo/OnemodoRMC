@@ -167,7 +167,7 @@ export default function DispatchSummary() {
                                     <Text style={[styles.truckRegText, { color: colors.text }]}>{regNo}</Text>
                                 </View>
                                 <View style={[styles.qtyBadge, { backgroundColor: colors.secondaryContainer }]}>
-                                    <Text style={[styles.qtyText, { color: colors.onSecondaryContainer || "#006c49" }]}>
+                                    <Text style={[styles.qtyText, { color: colors.onSecondaryContainer }]}>
                                         {qty} {unit}
                                     </Text>
                                 </View>

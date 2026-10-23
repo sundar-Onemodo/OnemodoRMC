@@ -1,5 +1,6 @@
 import authReducer from "@/store/authSlice";
 import dateFilterReducer from "@/store/dateFilterSlice";
+import quotationReducer from "@/store/quotationSlice";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { combineReducers, configureStore } from "@reduxjs/toolkit";
 import {
@@ -9,32 +10,32 @@ import {
     persistReducer,
     PURGE,
     REGISTER,
-    REHYDRATE
+    REHYDRATE,
 } from "redux-persist";
 import persistStore from "redux-persist/es/persistStore";
 
-
 const rootReducer = combineReducers({
-    auth: authReducer,
-    dateFilter: dateFilterReducer
-})
+  auth: authReducer,
+  dateFilter: dateFilterReducer,
+  quotation: quotationReducer,
+});
 
 const persistConfig = {
-    key: "root",
-    storage: AsyncStorage,
-    whitelist: ["auth", "dateFilter"]
-}
+  key: "root",
+  storage: AsyncStorage,
+  whitelist: ["auth", "dateFilter"],
+};
 
-const persistedReducer = persistReducer(persistConfig, rootReducer)
+const persistedReducer = persistReducer(persistConfig, rootReducer);
 
 export const store = configureStore({
-    reducer: persistedReducer,
-    middleware: (getDefaultMiddleware) =>
-        getDefaultMiddleware({
-            serializableCheck: {
-                ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER]
-            },
-        }),
+  reducer: persistedReducer,
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
+      },
+    }),
 });
 
 export const persistor = persistStore(store);
