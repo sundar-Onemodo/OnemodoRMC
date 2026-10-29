@@ -33,13 +33,22 @@ export interface TaxDropdownItem {
   parent_id?: number | null;
 }
 
+export interface SalesExecutiveDropdownItem {
+  id: number;
+  label: string;
+  plant_id?: number;
+  employee_code?: string;
+}
+
 export interface QuotationState {
   customers: CustomerDropdownItem[];
   sites: SiteDropdownItem[];
   mixDesigns: MixDesignDropdownItem[];
   taxes: TaxDropdownItem[];
+  salesExecutives: SalesExecutiveDropdownItem[];
   selectedCustomer: CustomerDropdownItem | null;
   selectedSite: SiteDropdownItem | null;
+  selectedSalesExecutive: SalesExecutiveDropdownItem | null;
   isLoadingDropdowns: boolean;
   dropdownError: string | null;
 }
@@ -49,8 +58,10 @@ const initialState: QuotationState = {
   sites: [],
   mixDesigns: [],
   taxes: [],
+  salesExecutives: [],
   selectedCustomer: null,
   selectedSite: null,
+  selectedSalesExecutive: null,
   isLoadingDropdowns: false,
   dropdownError: null,
 };
@@ -71,6 +82,12 @@ const quotationSlice = createSlice({
     setTaxes: (state, action: PayloadAction<TaxDropdownItem[]>) => {
       state.taxes = action.payload;
     },
+    setSalesExecutives: (
+      state,
+      action: PayloadAction<SalesExecutiveDropdownItem[]>,
+    ) => {
+      state.salesExecutives = action.payload;
+    },
     setSelectedCustomer: (
       state,
       action: PayloadAction<CustomerDropdownItem | null>,
@@ -83,6 +100,12 @@ const quotationSlice = createSlice({
     ) => {
       state.selectedSite = action.payload;
     },
+    setSelectedSalesExecutive: (
+      state,
+      action: PayloadAction<SalesExecutiveDropdownItem | null>,
+    ) => {
+      state.selectedSalesExecutive = action.payload;
+    },
     setDropdownLoading: (state, action: PayloadAction<boolean>) => {
       state.isLoadingDropdowns = action.payload;
     },
@@ -92,6 +115,7 @@ const quotationSlice = createSlice({
     clearQuotationSelection: (state) => {
       state.selectedCustomer = null;
       state.selectedSite = null;
+      state.selectedSalesExecutive = null;
     },
   },
 });
@@ -101,8 +125,10 @@ export const {
   setSites,
   setMixDesigns,
   setTaxes,
+  setSalesExecutives,
   setSelectedCustomer,
   setSelectedSite,
+  setSelectedSalesExecutive,
   setDropdownLoading,
   setDropdownError,
   clearQuotationSelection,

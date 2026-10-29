@@ -15,6 +15,7 @@ interface AppHeaderProps {
   showNotification?: boolean;
   onBackPress?: () => void;
   rightElement?: React.ReactNode;
+  backgroundColor?: string;
 }
 
 export function AppHeader({
@@ -23,6 +24,7 @@ export function AppHeader({
   showNotification = true,
   onBackPress,
   rightElement,
+  backgroundColor,
 }: AppHeaderProps) {
   const router = useRouter();
   const scheme = useColorScheme();
@@ -33,15 +35,15 @@ export function AppHeader({
   const handleBack = () => {
     if (onBackPress) {
       onBackPress();
-    } else {
-      router.back();
     }
   };
 
+  const headerBg = backgroundColor || colors.headerBgColor;
+
   return (
-    <View style={[styles.header, { backgroundColor: colors.headerBgColor, borderBottomColor: 'transparent' }]}>
+    <View style={[styles.header, { backgroundColor: headerBg, borderBottomColor: 'transparent' }]}>
       <View style={styles.leftContainer}>
-        {onBackPress || router.canGoBack() ? (
+        {onBackPress ? (
           <Pressable
             onPress={handleBack}
             style={({ pressed }) => [

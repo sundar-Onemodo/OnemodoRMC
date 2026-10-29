@@ -1,10 +1,29 @@
 import { MaterialIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback } from "react";
+import { BackHandler, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function OrderProgressScreen() {
+  const handleBack = useCallback(() => {
+    router.replace("/quotation" as any);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, [handleBack]),
+  );
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f3f7f8" }}>
       <StatusBar style="auto" />
@@ -109,7 +128,7 @@ export default function OrderProgressScreen() {
               alignItems: "center",
               gap: 4,
             }}
-            onPress={() => router.back()}
+            onPress={handleBack}
           >
             <MaterialIcons name={"chevron-left"} size={24} color="#087f8c" />
             <Text style={{ color: "#087f8c", fontSize: 16, fontWeight: "700" }}>

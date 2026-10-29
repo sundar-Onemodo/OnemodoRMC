@@ -1,6 +1,7 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback } from 'react';
 import {
+  BackHandler,
   FlatList,
   StyleSheet,
   Text,
@@ -32,6 +33,24 @@ export default function TruckDetailsScreen() {
 
   // Find the selected truck
   const truck = DUMMY_TRUCKS.find((t) => t.id === id) || DUMMY_TRUCKS[0];
+
+  const handleBack = useCallback(() => {
+    router.replace('/trucks' as any);
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, [handleBack]),
+  );
 
   // Generated dummy trips history for this truck
   const tripHistory: TripItem[] = [
@@ -85,7 +104,7 @@ export default function TruckDetailsScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
       <AppHeader
         title={truck.number}
-        onBackPress={() => router.back()}
+        onBackPress={handleBack}
       />
       <FlatList
         style={[styles.contentContainer, { backgroundColor: colors.background }]}

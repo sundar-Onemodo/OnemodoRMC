@@ -89,6 +89,32 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const scheme = useColorScheme();
   const colors = Colors[scheme === "dark" ? "dark" : "light"];
 
+  const currentRoute = state.routes[state.index];
+
+  // Only show the bottom tab bar on the 5 primary main screens (Dashboard, Stock, Customers, More, Profile)
+  const MAIN_TAB_NAMES = ["index", "trucks", "customers", "more", "profile"];
+  if (!currentRoute || !MAIN_TAB_NAMES.includes(currentRoute.name)) {
+    return null;
+  }
+
+  // If inside a stack navigator (e.g. trucks/[id] or customers/[id]), hide the tab bar on detail/sub-screens
+  if (currentRoute.state) {
+    const childRoutes = currentRoute.state.routes;
+    const childIndex = currentRoute.state.index;
+    if (Array.isArray(childRoutes) && typeof childIndex === "number") {
+      const activeChild = childRoutes[childIndex];
+      if (activeChild && activeChild.name !== "index") {
+        return null;
+      }
+    }
+  }
+
+  // If options explicitly hide the tab bar
+  const currentOptions = descriptors[currentRoute.key]?.options;
+  if (currentOptions?.tabBarStyle?.display === "none") {
+    return null;
+  }
+
   return (
     <View
       style={[styles.tabBarWrapper, { bottom: Math.max(insets.bottom, 12) }]}
@@ -114,12 +140,8 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
                 ? options.title
                 : route.name;
 
-          // Only render tab buttons for the main screens
-          if (
-            ["index", "trucks", "customers", "profile", "quotation"].indexOf(
-              route.name,
-            ) === -1
-          ) {
+          // Only render tab buttons for the 5 main screens
+          if (MAIN_TAB_NAMES.indexOf(route.name) === -1) {
             return null;
           }
 
@@ -156,12 +178,12 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
           } else if (route.name === "customers") {
             iconName = isFocused ? "people" : "people-outline";
             displayLabel = "Customers";
+          } else if (route.name === "more") {
+            iconName = isFocused ? "apps" : "apps-outline";
+            displayLabel = "More";
           } else if (route.name === "profile") {
             iconName = isFocused ? "person" : "person-outline";
             displayLabel = "Profile";
-          } else if (route.name === "quotation") {
-            iconName = isFocused ? "cart" : "cart-outline";
-            displayLabel = "quotation";
           }
 
           return (
@@ -193,6 +215,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 export default function AppTabs() {
   return (
     <Tabs
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
       }}
@@ -201,8 +224,13 @@ export default function AppTabs() {
       <Tabs.Screen name="index" options={{ title: "Dashboard" }} />
       <Tabs.Screen name="trucks" options={{ title: "Stock" }} />
       <Tabs.Screen name="customers" options={{ title: "Customers" }} />
+      <Tabs.Screen name="more" options={{ title: "More" }} />
       <Tabs.Screen name="profile" options={{ title: "Profile" }} />
-      <Tabs.Screen name="quotation" options={{ title: "Quotation" }} />
+      <Tabs.Screen name="quotation" options={{ href: null }} />
+      <Tabs.Screen name="customer-po" options={{ href: null }} />
+      <Tabs.Screen name="lead" options={{ href: null }} />
+      <Tabs.Screen name="batching-schedule" options={{ href: null }} />
+      <Tabs.Screen name="sales-order" options={{ href: null }} />
       <Tabs.Screen name="sales" options={{ href: null }} />
       <Tabs.Screen name="login" options={{ href: null }} />
     </Tabs>

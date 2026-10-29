@@ -1,6 +1,7 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback } from 'react';
 import {
+  BackHandler,
   FlatList,
   StyleSheet,
   Text,
@@ -33,6 +34,24 @@ export default function CustomerDetailsScreen() {
   // Look up selected customer
   const customer = DUMMY_CUSTOMERS.find((c) => c.id === id) || DUMMY_CUSTOMERS[0];
   const paidAmount = customer.totalPurchase - customer.pendingAmount;
+
+  const handleBack = useCallback(() => {
+    router.replace('/customers' as any);
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, [handleBack]),
+  );
 
   // Generated transaction history list
   const transactions: TransactionItem[] = [
@@ -98,7 +117,7 @@ export default function CustomerDetailsScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
       <AppHeader
         title={customer.name}
-        onBackPress={() => router.back()}
+        onBackPress={handleBack}
       />
       <FlatList
         style={[styles.contentContainer, { backgroundColor: colors.background }]}

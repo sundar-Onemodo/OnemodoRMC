@@ -97,6 +97,7 @@ export function Drawer() {
     { label: 'Dashboard', icon: 'dashboard', route: '/' },
     { label: 'Stock', icon: 'inventory', route: '/trucks' },
     { label: 'Customer Profile', icon: 'groups', route: '/customers' },
+    { label: 'More Modules', icon: 'apps', route: '/more' },
     { label: 'My Profile', icon: 'person', route: '/profile' },
   ];
 

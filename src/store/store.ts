@@ -1,5 +1,6 @@
 import authReducer from "@/store/authSlice";
 import dateFilterReducer from "@/store/dateFilterSlice";
+import dropdownReducer from "@/store/dropdownSlice";
 import quotationReducer from "@/store/quotationSlice";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { combineReducers, configureStore } from "@reduxjs/toolkit";
@@ -18,12 +19,13 @@ const rootReducer = combineReducers({
   auth: authReducer,
   dateFilter: dateFilterReducer,
   quotation: quotationReducer,
+  dropdowns: dropdownReducer,
 });
 
 const persistConfig = {
   key: "root",
   storage: AsyncStorage,
-  whitelist: ["auth", "dateFilter"],
+  whitelist: ["auth", "dateFilter", "dropdowns"],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

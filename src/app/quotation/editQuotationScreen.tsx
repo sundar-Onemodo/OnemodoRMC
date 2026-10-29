@@ -1,9 +1,12 @@
 import { baseURL } from "@/components/baseUrl/baseUrlAPI";
 import {
   CustomerDropdownItem,
+  SalesExecutiveDropdownItem,
   setCustomers,
   setMixDesigns,
+  setSalesExecutives,
   setSelectedCustomer,
+  setSelectedSalesExecutive,
   setSelectedSite,
   setSites,
   setTaxes,
@@ -17,6 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -113,25 +117,95 @@ const formatAmountWithDecimals = (
   });
 };
 
+export function cleanSalesExecutiveName(rawName?: string | null): string {
+  if (!rawName) return "";
+  return rawName.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
 export default function EditQuotationScreen({
   quotationId: propQuotationId,
   onBack,
   onSuccess,
 }: EditQuotationScreenProps = {}) {
   const dispatch = useDispatch();
-  const params = useLocalSearchParams<{ quotation_id?: string; id?: string }>();
-  const quotationId = propQuotationId ?? params.quotation_id ?? params.id;
+  const params = useLocalSearchParams<{
+    quotation_id?: string;
+    id?: string;
+    sales_executive_id?: string;
+    salesExecutiveId?: string;
+    plant_id?: string;
+    quotationData?: string;
+  }>();
+
+  const passedQuotation = useMemo(() => {
+    if (!params.quotationData) return null;
+    if (typeof params.quotationData === "object") return params.quotationData;
+    try {
+      return typeof params.quotationData === "string"
+        ? JSON.parse(params.quotationData)
+        : params.quotationData;
+    } catch {
+      return null;
+    }
+  }, [params.quotationData]);
+
+  const quotationId =
+    propQuotationId ?? passedQuotation?.id ?? params.quotation_id ?? params.id;
+
+  const initialSalesExecId = useMemo(() => {
+    const raw =
+      passedQuotation?.sales_executive_id ??
+      passedQuotation?.sales_executive?.id ??
+      (typeof passedQuotation?.sales_executive === "number"
+        ? passedQuotation.sales_executive
+        : null) ??
+      params.sales_executive_id ??
+      params.salesExecutiveId;
+    if (
+      raw !== undefined &&
+      raw !== null &&
+      raw !== "" &&
+      !isNaN(Number(raw))
+    ) {
+      return Number(raw);
+    }
+    return null;
+  }, [passedQuotation, params.sales_executive_id, params.salesExecutiveId]);
+
+  // console.log("[Router Params] Sales Executive:", {
+  //   "params.sales_executive_id": params.sales_executive_id,
+  //   "params.salesExecutiveId": params.salesExecutiveId,
+  //   "passedQuotation?.sales_executive_id": passedQuotation?.sales_executive_id,
+  //   "passedQuotation?.sales_executive": passedQuotation?.sales_executive,
+  //   resolved_initialSalesExecId: initialSalesExecId,
+  // });
 
   const [storedQuotationId, setStoredQuotationId] = useState<
     number | string | null
   >(quotationId ?? null);
-  const [storedPatronId, setStoredPatronId] = useState<number | null>(null);
-  const [quotationReference, setQuotationReference] = useState<string>("");
-  const [loadingDetail, setLoadingDetail] = useState<boolean>(true);
+  const [storedPatronId, setStoredPatronId] = useState<number | null>(() => {
+    const pId = passedQuotation?.patron_id ?? passedQuotation?.patron?.id;
+    return pId ? Number(pId) : null;
+  });
+  const [storedSalesExecutiveId, setStoredSalesExecutiveId] = useState<
+    number | null
+  >(initialSalesExecId);
+  const [quotationReference, setQuotationReference] = useState<string>(
+    passedQuotation?.reference || "",
+  );
+  const [loadingDetail, setLoadingDetail] = useState<boolean>(!passedQuotation);
 
-  const { token, plant_id, plant_name } = useSelector(
+  const { token, plant_id, plant_name, user } = useSelector(
     (state: RootState) => state.auth,
   );
+
+  const effectivePlantId =
+    plant_id ??
+    passedQuotation?.plant_id ??
+    (params.plant_id ? Number(params.plant_id) : null) ??
+    user?.default_plant_id ??
+    (user as any)?.plant_id ??
+    6;
 
   const cachedCustomers = useSelector(
     (state: RootState) => state.quotation.customers,
@@ -141,13 +215,166 @@ export default function EditQuotationScreen({
     (state: RootState) => state.quotation.mixDesigns,
   );
   const cachedTaxes = useSelector((state: RootState) => state.quotation.taxes);
+  const cachedSalesExecutives = useSelector(
+    (state: RootState) => state.quotation.salesExecutives,
+  );
 
-  // Form State
+  // Form State - initialized from passedQuotation if available
   const [selectedCustomerItem, setSelectedCustomerItem] =
-    useState<CustomerDropdownItem | null>(null);
+    useState<CustomerDropdownItem | null>(() => {
+      if (passedQuotation?.patron) {
+        return {
+          id: passedQuotation.patron.id,
+          legal_name:
+            passedQuotation.patron.legal_name ||
+            passedQuotation.client ||
+            "Customer",
+        };
+      }
+      return null;
+    });
 
   const [selectedSiteItem, setSelectedSiteItem] =
-    useState<SiteDropdownItem | null>(null);
+    useState<SiteDropdownItem | null>(() => {
+      if (passedQuotation?.site) {
+        return {
+          id: passedQuotation.site.id,
+          name: passedQuotation.site.name || "Site",
+          site_address_1: passedQuotation.site.site_address_1 || null,
+        };
+      }
+      return null;
+    });
+
+  const [selectedSalesExecutiveItem, setSelectedSalesExecutiveItem] =
+    useState<SalesExecutiveDropdownItem | null>(() => {
+      const targetId =
+        initialSalesExecId ??
+        passedQuotation?.sales_executive_id ??
+        passedQuotation?.sales_executive?.id;
+      if (targetId && cachedSalesExecutives.length > 0) {
+        return (
+          cachedSalesExecutives.find(
+            (se) => Number(se.id) === Number(targetId),
+          ) ||
+          cachedSalesExecutives[0] ||
+          null
+        );
+      }
+      if (
+        passedQuotation?.sales_executive &&
+        typeof passedQuotation.sales_executive === "object" &&
+        passedQuotation.sales_executive.label
+      ) {
+        return {
+          id: Number(passedQuotation.sales_executive.id),
+          label: passedQuotation.sales_executive.label,
+          employee_code: passedQuotation.sales_executive.employee_code,
+          plant_id: passedQuotation.sales_executive.plant_id,
+        };
+      }
+      if (cachedSalesExecutives.length > 0) {
+        return cachedSalesExecutives[0];
+      }
+      return null;
+    });
+
+  // Dedicated immediate fetch for sales executives so it does not wait for heavy dropdowns
+  useEffect(() => {
+    if (!token) return;
+    let isCancelled = false;
+
+    const fetchSalesExecutivesDirectly = async () => {
+      try {
+        const cleanToken = token.trim();
+        const plantIdNum = effectivePlantId || 6;
+        const headers: Record<string, string> = {
+          Accept: "application/json",
+          Authorization: cleanToken.startsWith("Bearer")
+            ? cleanToken
+            : `Bearer ${cleanToken}`,
+          "X-Plant-Id": String(plantIdNum),
+        };
+
+        const res = await axios.get(`${baseURL}/sales-executives`, {
+          headers,
+          params: { plant_id: String(plantIdNum) },
+        });
+
+        const list = Array.isArray(res.data?.data)
+          ? res.data.data
+          : Array.isArray(res.data?.data?.data)
+            ? res.data.data.data
+            : Array.isArray(res.data)
+              ? res.data
+              : [];
+
+        if (!isCancelled && list.length > 0) {
+          dispatch(setSalesExecutives(list));
+
+          const targetId =
+            storedSalesExecutiveId ??
+            initialSalesExecId ??
+            passedQuotation?.sales_executive_id ??
+            passedQuotation?.sales_executive?.id;
+
+          const matched = targetId
+            ? list.find((se: any) => Number(se.id) === Number(targetId))
+            : null;
+
+          const finalItem = matched || list[0];
+          setSelectedSalesExecutiveItem(finalItem);
+          dispatch(setSelectedSalesExecutive(finalItem));
+          if (finalItem?.id) {
+            setStoredSalesExecutiveId(Number(finalItem.id));
+          }
+        }
+      } catch (err: any) {
+        console.warn(
+          "[EditQuotation] Error fetching sales executives directly:",
+          err?.message || err,
+        );
+      }
+    };
+
+    fetchSalesExecutivesDirectly();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    token,
+    effectivePlantId,
+    storedSalesExecutiveId,
+    initialSalesExecId,
+    passedQuotation?.sales_executive_id,
+    passedQuotation?.sales_executive?.id,
+  ]);
+
+  // Synchronize Sales Executive name whenever cachedSalesExecutives or storedSalesExecutiveId updates
+  useEffect(() => {
+    const targetId =
+      storedSalesExecutiveId ??
+      initialSalesExecId ??
+      passedQuotation?.sales_executive_id ??
+      passedQuotation?.sales_executive?.id;
+    if (cachedSalesExecutives.length > 0) {
+      const matched = targetId
+        ? cachedSalesExecutives.find((se) => Number(se.id) === Number(targetId))
+        : null;
+      const finalItem = matched || cachedSalesExecutives[0];
+      if (finalItem) {
+        setSelectedSalesExecutiveItem((prev) => prev || finalItem);
+        dispatch(setSelectedSalesExecutive(finalItem));
+      }
+    }
+  }, [
+    storedSalesExecutiveId,
+    initialSalesExecId,
+    passedQuotation?.sales_executive_id,
+    passedQuotation?.sales_executive?.id,
+    cachedSalesExecutives,
+  ]);
 
   const [quoteDate, setQuoteDate] = useState<string>(getTodayDateString());
   const [validityDate, setValidityDate] = useState<string>(
@@ -158,13 +385,33 @@ export default function EditQuotationScreen({
     "Delivery subject to schedule confirmation",
   );
 
+  const handleBack = useCallback(() => {
+    if (onBack) {
+      onBack();
+    } else {
+      router.replace("/quotation" as any);
+    }
+  }, [onBack]);
+
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle("light-content");
       if (Platform.OS === "android") {
         StatusBar.setBackgroundColor("#0B2A4A");
       }
-    }, []),
+
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress,
+      );
+
+      return () => subscription.remove();
+    }, [handleBack]),
   );
 
   const [items, setItems] = useState<FormLineItem[]>([
@@ -227,20 +474,24 @@ export default function EditQuotationScreen({
       };
       if (token) {
         const cleanToken = token.trim();
-        headers["Authorization"] = cleanToken.startsWith("Bearer ")
+        headers["Authorization"] = cleanToken.startsWith("Bearer")
           ? cleanToken
           : `Bearer ${cleanToken}`;
       }
-      if (plant_id !== null && plant_id !== undefined) {
-        headers["X-Plant-Id"] = String(plant_id);
+      if (effectivePlantId !== null && effectivePlantId !== undefined) {
+        headers["X-Plant-Id"] = String(effectivePlantId);
       }
 
       try {
+        const queryParams: Record<string, any> = { page: 1 };
+        if (effectivePlantId !== null && effectivePlantId !== undefined) {
+          queryParams.plant_id = String(effectivePlantId);
+        }
+
         const customersPromise = axios
           .get(`${baseURL}/customers`, {
             headers,
-            params: { page: 1 },
-            timeout: 20000,
+            params: queryParams,
           })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
@@ -258,8 +509,7 @@ export default function EditQuotationScreen({
         const sitesPromise = axios
           .get(`${baseURL}/sites`, {
             headers,
-            params: { page: 1 },
-            timeout: 20000,
+            params: queryParams,
           })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
@@ -277,8 +527,7 @@ export default function EditQuotationScreen({
         const mixDesignsPromise = axios
           .get(`${baseURL}/mix-designs`, {
             headers,
-            params: { page: 1 },
-            timeout: 20000,
+            params: queryParams,
           })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
@@ -297,7 +546,6 @@ export default function EditQuotationScreen({
           .get(`${baseURL}/taxes`, {
             headers,
             params: { page: 1 },
-            timeout: 20000,
           })
           .then((res) => {
             const rawList = res.data?.data?.data || res.data?.data || [];
@@ -316,71 +564,185 @@ export default function EditQuotationScreen({
             return [];
           });
 
-        const [fetchedCustomers, fetchedSites, fetchedMixes, fetchedTaxes] =
-          await Promise.all([
-            customersPromise,
-            sitesPromise,
-            mixDesignsPromise,
-            taxesPromise,
-          ]);
+        const salesExecutivesPromise = axios
+          .get(`${baseURL}/sales-executives`, {
+            headers,
+            params: { plant_id: String(effectivePlantId || 6) },
+          })
+          .then((res) => {
+            const list = Array.isArray(res.data?.data)
+              ? res.data.data
+              : Array.isArray(res.data?.data?.data)
+                ? res.data.data.data
+                : Array.isArray(res.data)
+                  ? res.data
+                  : [];
+            if (Array.isArray(list) && list.length > 0) {
+              dispatch(setSalesExecutives(list));
+              const targetSalesExecId =
+                storedSalesExecutiveId ??
+                initialSalesExecId ??
+                passedQuotation?.sales_executive_id ??
+                passedQuotation?.sales_executive?.id;
+              const matched = targetSalesExecId
+                ? list.find(
+                    (se: any) => Number(se.id) === Number(targetSalesExecId),
+                  )
+                : null;
+              const finalItem = matched || list[0];
+              setSelectedSalesExecutiveItem((prev) => prev || finalItem);
+              dispatch(setSelectedSalesExecutive(finalItem));
+              if (finalItem?.id) {
+                setStoredSalesExecutiveId(
+                  (prev) => prev ?? Number(finalItem.id),
+                );
+              }
+              return list;
+            }
+            return [];
+          })
+          .catch((err) => {
+            console.log("Error loading sales executives:", err?.message || err);
+            return [];
+          });
+
+        const [
+          fetchedCustomers,
+          fetchedSites,
+          fetchedMixes,
+          fetchedTaxes,
+          fetchedSalesExecs,
+        ] = await Promise.all([
+          customersPromise,
+          sitesPromise,
+          mixDesignsPromise,
+          taxesPromise,
+          salesExecutivesPromise,
+        ]);
 
         if (!isCancelled) {
-          if (fetchedCustomers.length > 0) {
-            const defaultCust = fetchedCustomers[0];
-            setSelectedCustomerItem((prev) => {
-              if (prev) return prev;
-              dispatch(setSelectedCustomer(defaultCust));
-              return defaultCust;
-            });
+          // Match Sales Executive based on sales_executive_id (e.g. 1) or fallback to first executive
+          if (fetchedSalesExecs.length > 0) {
+            const targetSalesExecId =
+              storedSalesExecutiveId ??
+              initialSalesExecId ??
+              passedQuotation?.sales_executive_id ??
+              passedQuotation?.sales_executive?.id;
+            const matched = targetSalesExecId
+              ? fetchedSalesExecs.find(
+                  (se: any) => Number(se.id) === Number(targetSalesExecId),
+                )
+              : null;
+            const finalItem = matched || fetchedSalesExecs[0];
+            setSelectedSalesExecutiveItem((prev) => prev || finalItem);
+            dispatch(setSelectedSalesExecutive(finalItem));
+            if (finalItem?.id) {
+              setStoredSalesExecutiveId((prev) => prev ?? Number(finalItem.id));
+            }
+          }
 
-            const matchingSite = fetchedSites.find((s: any) =>
-              Array.isArray(s.patron_id)
-                ? s.patron_id.includes(defaultCust.id)
-                : s.patron_id === defaultCust.id,
-            );
-            const defaultSite = matchingSite || fetchedSites[0] || null;
-            if (defaultSite) {
-              setSelectedSiteItem((prev) => {
+          // Match Customer based on patron_id
+          if (fetchedCustomers.length > 0) {
+            const targetPatronId =
+              passedQuotation?.patron_id ??
+              passedQuotation?.patron?.id ??
+              storedPatronId;
+            if (targetPatronId) {
+              const matchedCust = fetchedCustomers.find(
+                (c: any) => Number(c.id) === Number(targetPatronId),
+              );
+              if (matchedCust) {
+                setSelectedCustomerItem(matchedCust);
+                dispatch(setSelectedCustomer(matchedCust));
+              }
+            } else {
+              const defaultCust = fetchedCustomers[0];
+              setSelectedCustomerItem((prev) => {
                 if (prev) return prev;
-                dispatch(setSelectedSite(defaultSite));
-                return defaultSite;
+                dispatch(setSelectedCustomer(defaultCust));
+                return defaultCust;
               });
             }
           }
 
+          // Match Site based on site_id
+          if (fetchedSites.length > 0) {
+            const targetSiteId =
+              passedQuotation?.site_id ?? passedQuotation?.site?.id;
+            if (targetSiteId) {
+              const matchedSite = fetchedSites.find(
+                (s: any) => Number(s.id) === Number(targetSiteId),
+              );
+              if (matchedSite) {
+                setSelectedSiteItem(matchedSite);
+                dispatch(setSelectedSite(matchedSite));
+              }
+            } else if (fetchedCustomers.length > 0) {
+              const defaultCust = fetchedCustomers[0];
+              const matchingSite = fetchedSites.find((s: any) =>
+                Array.isArray(s.patron_id)
+                  ? s.patron_id.includes(defaultCust.id)
+                  : s.patron_id === defaultCust.id,
+              );
+              const defaultSite = matchingSite || fetchedSites[0] || null;
+              if (defaultSite) {
+                setSelectedSiteItem((prev) => {
+                  if (prev) return prev;
+                  dispatch(setSelectedSite(defaultSite));
+                  return defaultSite;
+                });
+              }
+            }
+          }
+
           if (fetchedMixes.length > 0 && fetchedTaxes.length > 0) {
-            const firstMix = fetchedMixes[0];
-            const defaultTax =
-              fetchedTaxes.find(
-                (t: any) =>
-                  String(t.tax_name).includes("18%") ||
-                  Number(t.rate || t.tax_rate) === 18,
-              ) || fetchedTaxes[0];
+            setItems((prevItems) => {
+              if (
+                prevItems.length > 0 &&
+                prevItems.some((it) => it.mix_design_id)
+              ) {
+                return prevItems;
+              }
+              if (passedQuotation?.items && passedQuotation.items.length > 0) {
+                return prevItems;
+              }
+              const firstMix = fetchedMixes[0];
+              const defaultTax =
+                fetchedTaxes.find(
+                  (t: any) =>
+                    String(t.tax_name).includes("18%") ||
+                    Number(t.rate || t.tax_rate) === 18,
+                ) || fetchedTaxes[0];
 
-            const initialRate =
-              parseFloat(firstMix.rate_per_qty || "0") > 0
-                ? String(parseFloat(firstMix.rate_per_qty))
-                : "5000";
+              const initialRate =
+                parseFloat(firstMix.rate_per_qty || "0") > 0
+                  ? String(parseFloat(firstMix.rate_per_qty))
+                  : "5000";
 
-            setItems([
-              {
-                id: "item-1",
-                mix_design_id: firstMix.id,
-                mix_design_name: firstMix.design_name || firstMix.name || "",
-                quantity: "6",
-                rate: initialRate,
-                tax_id: defaultTax.id,
-                tax_name: defaultTax.tax_name || defaultTax.name || "GST 18%",
-                tax_rate: Number(defaultTax.rate || defaultTax.tax_rate || 18),
-                calculation: calculateLineItemTotals({
-                  quantity: 6,
-                  rate: parseFloat(initialRate) || 5000,
-                  pump_rate: 0,
-                  taxRate: Number(defaultTax.rate || defaultTax.tax_rate || 18),
-                  isTaxInclusive: false,
-                }),
-              },
-            ]);
+              return [
+                {
+                  id: "item-1",
+                  mix_design_id: firstMix.id,
+                  mix_design_name: firstMix.design_name || firstMix.name || "",
+                  quantity: "6",
+                  rate: initialRate,
+                  tax_id: defaultTax.id,
+                  tax_name: defaultTax.tax_name || defaultTax.name || "GST 18%",
+                  tax_rate: Number(
+                    defaultTax.rate || defaultTax.tax_rate || 18,
+                  ),
+                  calculation: calculateLineItemTotals({
+                    quantity: 6,
+                    rate: parseFloat(initialRate) || 5000,
+                    pump_rate: 0,
+                    taxRate: Number(
+                      defaultTax.rate || defaultTax.tax_rate || 18,
+                    ),
+                    isTaxInclusive: false,
+                  }),
+                },
+              ];
+            });
           }
         }
       } finally {
@@ -395,7 +757,7 @@ export default function EditQuotationScreen({
     return () => {
       isCancelled = true;
     };
-  }, [token, plant_id, dispatch]);
+  }, [token, plant_id, effectivePlantId, dispatch]);
 
   useEffect(() => {
     if (!token || !quotationId) {
@@ -410,22 +772,29 @@ export default function EditQuotationScreen({
           Accept: "application/json",
         };
         const cleanToken = token.trim();
-        headers["Authorization"] = cleanToken.startsWith("Bearer ")
+        headers["Authorization"] = cleanToken.startsWith("Bearer")
           ? cleanToken
           : `Bearer ${cleanToken}`;
-        if (plant_id !== null && plant_id !== undefined) {
-          headers["X-Plant-Id"] = String(plant_id);
+        if (effectivePlantId !== null && effectivePlantId !== undefined) {
+          headers["X-Plant-Id"] = String(effectivePlantId);
         }
 
         console.log(
           `[QuotationsViewAPI] Fetching quotation details for ID: ${quotationId}`,
         );
 
+        const viewParams: Record<string, any> = {
+          quotation: String(quotationId),
+        };
+        if (effectivePlantId !== null && effectivePlantId !== undefined) {
+          viewParams.plant_id = String(effectivePlantId);
+        }
+
         let res;
         try {
           res = await axios.get(`${baseURL}/quotations/${quotationId}`, {
             headers,
-            timeout: 25000,
+            params: viewParams,
           });
         } catch (pathErr: any) {
           if (
@@ -433,12 +802,11 @@ export default function EditQuotationScreen({
             pathErr?.response?.status === 405
           ) {
             console.log(
-              "[QuotationsViewAPI] Fallback to ?quotation_id= parameter",
+              "[QuotationsViewAPI] Fallback to ?quotation= parameter",
             );
             res = await axios.get(`${baseURL}/quotations`, {
-              params: { quotation: String(quotationId) },
+              params: { ...viewParams, quotation: String(quotationId) },
               headers,
-              timeout: 25000,
             });
           } else {
             throw pathErr;
@@ -448,7 +816,19 @@ export default function EditQuotationScreen({
         if (isCancelled) return;
 
         console.log("[QuotationsViewAPI] Raw response:", res?.data);
-        const quoteData = res?.data?.data || res?.data;
+        const rawApiData = res?.data?.data || res?.data;
+        let quoteData = rawApiData;
+        if (rawApiData && Array.isArray(rawApiData.data)) {
+          quoteData =
+            rawApiData.data.find(
+              (q: any) => String(q.id) === String(quotationId),
+            ) || rawApiData.data[0];
+        } else if (Array.isArray(rawApiData)) {
+          quoteData =
+            rawApiData.find((q: any) => String(q.id) === String(quotationId)) ||
+            rawApiData[0];
+        }
+
         if (quoteData) {
           console.log(
             "[QuotationsViewAPI] Successfully loaded quotation data:",
@@ -475,7 +855,7 @@ export default function EditQuotationScreen({
             dispatch(setSelectedCustomer(custItem));
           } else if (quoteData.patron_id) {
             const found = cachedCustomers.find(
-              (c: any) => c.id === quoteData.patron_id,
+              (c: any) => Number(c.id) === Number(quoteData.patron_id),
             );
             const custItem: CustomerDropdownItem = found || {
               id: quoteData.patron_id,
@@ -496,7 +876,7 @@ export default function EditQuotationScreen({
             dispatch(setSelectedSite(siteItem));
           } else if (quoteData.site_id) {
             const found = cachedSites.find(
-              (s: any) => s.id === quoteData.site_id,
+              (s: any) => Number(s.id) === Number(quoteData.site_id),
             );
             const siteItem: SiteDropdownItem = found || {
               id: quoteData.site_id,
@@ -504,6 +884,104 @@ export default function EditQuotationScreen({
             };
             setSelectedSiteItem(siteItem);
             dispatch(setSelectedSite(siteItem));
+          }
+
+          // Sales Executive
+          const loadedSalesExecutiveId =
+            quoteData.sales_executive_id ??
+            quoteData.sales_executive?.id ??
+            (typeof quoteData.sales_executive === "number"
+              ? quoteData.sales_executive
+              : null) ??
+            passedQuotation?.sales_executive_id ??
+            initialSalesExecId;
+
+          if (loadedSalesExecutiveId) {
+            setStoredSalesExecutiveId(Number(loadedSalesExecutiveId));
+          }
+
+          if (
+            quoteData.sales_executive &&
+            typeof quoteData.sales_executive === "object" &&
+            quoteData.sales_executive.label
+          ) {
+            const seItem: SalesExecutiveDropdownItem = {
+              id: Number(quoteData.sales_executive.id),
+              label:
+                quoteData.sales_executive.label ||
+                quoteData.sales_executive.name ||
+                "Sales Executive",
+              employee_code: quoteData.sales_executive.employee_code,
+              plant_id: quoteData.sales_executive.plant_id,
+            };
+            setSelectedSalesExecutiveItem(seItem);
+            dispatch(setSelectedSalesExecutive(seItem));
+          } else if (loadedSalesExecutiveId) {
+            const targetSeId = Number(loadedSalesExecutiveId);
+            const found = cachedSalesExecutives.find(
+              (se: any) => Number(se.id) === targetSeId,
+            );
+            if (found) {
+              setSelectedSalesExecutiveItem(found);
+              dispatch(setSelectedSalesExecutive(found));
+            } else {
+              try {
+                const seHeaders = {
+                  Accept: "application/json",
+                  Authorization: cleanToken.startsWith("Bearer")
+                    ? cleanToken
+                    : `Bearer ${cleanToken}`,
+                  "X-Plant-Id": String(effectivePlantId || 6),
+                };
+                const seRes = await axios.get(`${baseURL}/sales-executives`, {
+                  headers: seHeaders,
+                  params: { plant_id: String(effectivePlantId || 6) },
+                });
+                const seList = Array.isArray(seRes.data?.data)
+                  ? seRes.data.data
+                  : Array.isArray(seRes.data?.data?.data)
+                    ? seRes.data.data.data
+                    : [];
+                if (seList.length > 0) {
+                  dispatch(setSalesExecutives(seList));
+                  const matchedDirectly = seList.find(
+                    (se: any) => Number(se.id) === targetSeId,
+                  );
+                  const finalSe = matchedDirectly || seList[0];
+                  setSelectedSalesExecutiveItem(finalSe);
+                  dispatch(setSelectedSalesExecutive(finalSe));
+                  if (finalSe?.id) {
+                    setStoredSalesExecutiveId(Number(finalSe.id));
+                  }
+                }
+              } catch (seErr) {
+                const labelCandidate =
+                  quoteData.sales_executive_name ||
+                  (typeof quoteData.sales_executive === "string"
+                    ? quoteData.sales_executive
+                    : "") ||
+                  passedQuotation?.sales_executive_name ||
+                  passedQuotation?.sales_executive?.label;
+                if (labelCandidate) {
+                  setSelectedSalesExecutiveItem({
+                    id: targetSeId,
+                    label: labelCandidate,
+                  });
+                }
+              }
+            }
+          } else {
+            // When quotation has no sales_executive_id, default to plant's primary sales executive
+            if (cachedSalesExecutives.length > 0) {
+              const defaultSe = cachedSalesExecutives[0];
+              setSelectedSalesExecutiveItem((prev) => prev || defaultSe);
+              dispatch(setSelectedSalesExecutive(defaultSe));
+              if (defaultSe?.id) {
+                setStoredSalesExecutiveId(
+                  (prev) => prev ?? Number(defaultSe.id),
+                );
+              }
+            }
           }
 
           // 3. Dates
@@ -589,7 +1067,15 @@ export default function EditQuotationScreen({
     return () => {
       isCancelled = true;
     };
-  }, [token, plant_id, quotationId, cachedCustomers, cachedSites, dispatch]);
+  }, [
+    token,
+    plant_id,
+    quotationId,
+    cachedCustomers,
+    cachedSites,
+    cachedSalesExecutives,
+    dispatch,
+  ]);
 
   const toggleTaxInclusive = () => {
     const nextVal = !isTaxInclusive;
@@ -752,6 +1238,38 @@ export default function EditQuotationScreen({
         const found = list.find((s) => s.id === item.id) || null;
         setSelectedSiteItem(found);
         if (found) dispatch(setSelectedSite(found));
+      },
+    });
+    setPickerSearch("");
+    setPickerModalVisible(true);
+  };
+
+  const openSalesExecutivePicker = () => {
+    const list = [...cachedSalesExecutives];
+    if (
+      selectedSalesExecutiveItem &&
+      selectedSalesExecutiveItem.id &&
+      !list.some((s) => Number(s.id) === Number(selectedSalesExecutiveItem.id))
+    ) {
+      list.unshift(selectedSalesExecutiveItem);
+    }
+
+    setPickerConfig({
+      title: "Select Sales Executive",
+      items: list.map((s) => ({
+        id: s.id,
+        label: cleanSalesExecutiveName(s.label),
+        subLabel: undefined,
+      })),
+      selectedId: selectedSalesExecutiveItem?.id ?? null,
+      onSelect: (item) => {
+        const found =
+          list.find((s) => Number(s.id) === Number(item.id)) || null;
+        setSelectedSalesExecutiveItem(found);
+        if (found) {
+          setStoredSalesExecutiveId(Number(found.id));
+          dispatch(setSelectedSalesExecutive(found));
+        }
       },
     });
     setPickerSearch("");
@@ -927,18 +1445,28 @@ export default function EditQuotationScreen({
 
     setIsSubmitting(true);
 
-    const activeQuotationId = storedQuotationId ?? quotationId;
+    const activeQuotationId =
+      passedQuotation?.id ?? storedQuotationId ?? quotationId;
     const activePatronId = selectedCustomerItem?.id ?? storedPatronId;
 
     const payload = {
       id: Number(activeQuotationId),
       quotation_id: Number(activeQuotationId),
+      quotation: Number(activeQuotationId),
       patron_id: Number(activePatronId),
       site_id: selectedSiteItem ? Number(selectedSiteItem.id) : null,
-      quote_date: getTodayDateString(),
+      sales_executive_id: selectedSalesExecutiveItem?.id
+        ? Number(selectedSalesExecutiveItem.id)
+        : (storedSalesExecutiveId ??
+          initialSalesExecId ??
+          (passedQuotation?.sales_executive_id
+            ? Number(passedQuotation.sales_executive_id)
+            : null)),
+      quote_date: quoteDate || getTodayDateString(),
       validity_date: validityDate,
       is_tax_inclusive: isTaxInclusive ? 1 : 0,
       notes: notes.trim(),
+      plant_id: effectivePlantId ? Number(effectivePlantId) : undefined,
       items: items.map((it) => ({
         mix_design_id: Number(it.mix_design_id),
         quantity: Number(parseFloat(it.quantity).toFixed(2)),
@@ -956,18 +1484,34 @@ export default function EditQuotationScreen({
     };
     if (token) {
       const cleanToken = token.trim();
-      headers["Authorization"] = cleanToken.startsWith("Bearer ")
+      headers["Authorization"] = cleanToken.startsWith("Bearer")
         ? cleanToken
         : `Bearer ${cleanToken}`;
     }
-    if (plant_id !== null && plant_id !== undefined) {
-      headers["X-Plant-Id"] = String(plant_id);
+    if (effectivePlantId !== null && effectivePlantId !== undefined) {
+      headers["X-Plant-Id"] = String(effectivePlantId);
     }
+
+    const params: Record<string, any> = {};
+    if (activeQuotationId !== null && activeQuotationId !== undefined) {
+      params.quotation = String(activeQuotationId);
+    }
+    // if (effectivePlantId !== null && effectivePlantId !== undefined) {
+    //   params.plant_id = String(effectivePlantId);
+    // }
 
     try {
       console.log(
-        `[Update Quotation] Updating quotation #${activeQuotationId} with payload:`,
+        `[Update Quotation] PUT ${baseURL}/quotations/${activeQuotationId} with payload:`,
         payload,
+      );
+      console.log(
+        "[Update Quotation] Headers:",
+        JSON.stringify(headers, null, 2),
+      );
+      console.log(
+        "[Update Quotation] Params:",
+        JSON.stringify(params, null, 2),
       );
 
       let updateRes;
@@ -977,35 +1521,24 @@ export default function EditQuotationScreen({
           payload,
           {
             headers,
-            timeout: 30000,
+            params,
           },
         );
       } catch (putErr: any) {
         console.log(
           "[Update Quotation] PUT /quotations/:id error:",
-          putErr?.response?.status,
-          putErr?.response?.data || putErr?.message,
+          putErr?.message,
+          putErr?.response?.data,
         );
-        if (
-          putErr?.response?.status === 405 ||
-          putErr?.response?.status === 404
-        ) {
-          try {
-            updateRes = await axios.post(
-              `${baseURL}/quotations/${activeQuotationId}`,
-              { ...payload, _method: "PUT" },
-              {
-                headers,
-                timeout: 30000,
-              },
-            );
-          } catch {
-            updateRes = await axios.put(`${baseURL}/quotations`, payload, {
-              params: { quotation_id: String(activeQuotationId) },
+        if (putErr?.response?.status === 405) {
+          updateRes = await axios.patch(
+            `${baseURL}/quotations/${activeQuotationId}`,
+            payload,
+            {
               headers,
-              timeout: 30000,
-            });
-          }
+              params,
+            },
+          );
         } else {
           throw putErr;
         }
@@ -1021,7 +1554,6 @@ export default function EditQuotationScreen({
             text: "OK",
             onPress: () => {
               if (onSuccess) onSuccess();
-              //   router.replace("/showlistquotation");
               router.push("/quotation");
             },
           },
@@ -1029,12 +1561,24 @@ export default function EditQuotationScreen({
         { cancelable: false },
       );
     } catch (err: any) {
-      console.log("Error updating quotation:", err?.message || err);
-      const errMsg =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
+      console.log(
+        "Error updating quotation:",
+        err?.message || err,
+        err?.response?.data,
+      );
+      const serverData = err?.response?.data;
+      let errMsg =
+        serverData?.message ||
+        serverData?.error ||
         err?.message ||
         "Could not update quotation. Please check your network and try again.";
+
+      if (serverData?.errors && typeof serverData.errors === "object") {
+        const errorDetails = Object.values(serverData.errors).flat().join("\n");
+        if (errorDetails) {
+          errMsg = `${errMsg}\n\n${errorDetails}`;
+        }
+      }
 
       Alert.alert("Update Note", errMsg, [{ text: "OK" }]);
     } finally {
@@ -1055,7 +1599,7 @@ export default function EditQuotationScreen({
         <View style={styles.headerTop}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => (onBack ? onBack() : router.back())}
+            onPress={handleBack}
             activeOpacity={0.7}
           >
             <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
@@ -1140,7 +1684,55 @@ export default function EditQuotationScreen({
               </TouchableOpacity>
             </View>
 
-            {/* 3. VALIDITY DATE CALENDAR */}
+            {/* 3. SALES EXECUTIVE DROPDOWN */}
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Sales Executive</Text>
+              <TouchableOpacity
+                style={styles.dropdownButton}
+                onPress={openSalesExecutivePicker}
+                activeOpacity={0.75}
+              >
+                {(() => {
+                  const targetId =
+                    storedSalesExecutiveId ??
+                    initialSalesExecId ??
+                    passedQuotation?.sales_executive_id ??
+                    passedQuotation?.sales_executive?.id;
+
+                  const matched =
+                    selectedSalesExecutiveItem ||
+                    (targetId && cachedSalesExecutives.length > 0
+                      ? cachedSalesExecutives.find(
+                          (se) => Number(se.id) === Number(targetId),
+                        )
+                      : null) ||
+                    (cachedSalesExecutives.length > 0
+                      ? cachedSalesExecutives[0]
+                      : null);
+
+                  const displayText = matched
+                    ? cleanSalesExecutiveName(matched.label)
+                    : "Loading Sales Executive...";
+
+                  const isPlaceholder = !matched;
+
+                  return (
+                    <Text
+                      style={[
+                        styles.dropdownText,
+                        isPlaceholder && styles.dropdownPlaceholder,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {displayText}
+                    </Text>
+                  );
+                })()}
+                <Ionicons name="chevron-down" size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* 4. VALIDITY DATE CALENDAR */}
             <View style={styles.formGroup}>
               <Text style={styles.label}>
                 Validity Date <Text style={styles.requiredAsterisk}>*</Text>
@@ -1381,7 +1973,7 @@ export default function EditQuotationScreen({
 
             <TouchableOpacity
               style={styles.cancelButton}
-              onPress={() => router.back()}
+              onPress={handleBack}
               activeOpacity={0.7}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>

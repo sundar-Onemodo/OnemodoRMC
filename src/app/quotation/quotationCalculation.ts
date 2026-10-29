@@ -89,3 +89,8 @@ export function useLineItemCalculation() {
     calculateLineItemTotals,
   };
 }
+
+export default function QuotationCalculationScreen() {
+  return null;
+}
+

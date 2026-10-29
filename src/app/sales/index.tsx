@@ -7,10 +7,11 @@ import { RootState } from '@/store/store';
 import { Feather, FontAwesome, FontAwesome5, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import axios from 'axios';
 import { format, parseISO } from 'date-fns';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Modal,
   Platform,
   Pressable,
@@ -49,6 +50,24 @@ export default function SalesDetailsScreen() {
   const [tempEndDate, setTempEndDate] = useState<string | null>(null);
   const { width: screenWidth } = useWindowDimensions();
   const calendarWidth = Math.min(screenWidth - 48, 380);
+
+  const handleBack = useCallback(() => {
+    router.replace('/' as any);
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress,
+      );
+      return () => subscription.remove();
+    }, [handleBack]),
+  );
 
   // Initialize active tab from params if provided
   useEffect(() => {
@@ -195,7 +214,7 @@ export default function SalesDetailsScreen() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]} edges={['top']}>
       <AppHeader
         title="Sales Details"
-        onBackPress={() => router.back()}
+        onBackPress={handleBack}
         showNotification={false}
         rightElement={
           <Pressable
