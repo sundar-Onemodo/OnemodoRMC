@@ -19,6 +19,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -265,6 +267,8 @@ function getStatusBadge(status: string) {
     case "qualified":
     case "won":
       return { bg: "#DCFCE7", text: "#15803D", border: "#86EFAC" };
+    case "approved":
+      return { bg: "#ECFDF5", text: "#059669", border: "#A7F3D0" };
     case "converted":
       return { bg: "#CCFBF1", text: "#0F766E", border: "#99F6E4" };
     case "lost":
@@ -462,7 +466,21 @@ export default function LeadScreen() {
     useState<boolean>(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
 
+  // Unqualified Lost Reason Modal State
+  const [unqualifiedModalVisible, setUnqualifiedModalVisible] =
+    useState<boolean>(false);
+  const [targetLeadForUnqualified, setTargetLeadForUnqualified] =
+    useState<LeadItem | null>(null);
+  const [unqualifiedLostReason, setUnqualifiedLostReason] =
+    useState<string>("Reject this");
+  const [isSubmittingUnqualified, setIsSubmittingUnqualified] =
+    useState<boolean>(false);
+
   const handleOpenStatusPicker = (lead: LeadItem) => {
+    const s = (lead.status || "").toLowerCase().trim();
+    if (s === "qualified" || s === "approved" || s === "converted") {
+      return;
+    }
     setSelectedLeadForStatus(lead);
     setStatusPickerVisible(true);
   };
@@ -473,6 +491,13 @@ export default function LeadScreen() {
     setStatusPickerVisible(false);
 
     if (targetLead.status?.toLowerCase() === newStatus.toLowerCase()) return;
+
+    if (newStatus.toLowerCase() === "unqualified") {
+      setTargetLeadForUnqualified(targetLead);
+      setUnqualifiedLostReason("Reject this");
+      setUnqualifiedModalVisible(true);
+      return;
+    }
 
     setUpdatingStatusId(targetLead.id);
 
@@ -608,6 +633,80 @@ export default function LeadScreen() {
         err?.response?.data?.message || "Could not update status on server.",
       );
     } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
+
+  const handleConfirmUnqualified = async () => {
+    if (!targetLeadForUnqualified) return;
+    const targetLead = targetLeadForUnqualified;
+    const reasonToSend = unqualifiedLostReason.trim() || "Reject this";
+
+    setUpdatingStatusId(targetLead.id);
+    setIsSubmittingUnqualified(true);
+
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    };
+
+    if (token) {
+      const cleanToken = token.trim();
+      headers["Authorization"] = cleanToken.startsWith("Bearer")
+        ? cleanToken
+        : `Bearer ${cleanToken}`;
+    }
+
+    if (plant_id !== null && plant_id !== undefined) {
+      headers["X-Plant-Id"] = String(plant_id);
+    }
+
+    const payload = {
+      status: "Unqualified",
+      lost_reason: reasonToSend,
+    };
+
+    const requestUrl = `${baseURL}/leads/${targetLead.id}`;
+    console.log("[Lead Unqualified PATCH] URL:", requestUrl);
+    console.log("[Lead Unqualified PATCH] Payload:", JSON.stringify(payload, null, 2));
+
+    try {
+      const response = await axios.patch(requestUrl, payload, {
+        headers,
+        params: { lead: targetLead.id },
+        timeout: 20000,
+      });
+
+      console.log("[Lead Unqualified PATCH] Response:", response.data);
+
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === targetLead.id
+            ? { ...l, status: "Unqualified", lost_reason: reasonToSend }
+            : l,
+        ),
+      );
+
+      setUnqualifiedModalVisible(false);
+      setTargetLeadForUnqualified(null);
+      Alert.alert(
+        "Lead Unqualified",
+        "Lead status updated to Unqualified.",
+      );
+    } catch (err: any) {
+      console.error(
+        "[Lead Unqualified PATCH] Error:",
+        err?.response?.data || err?.message,
+      );
+      const errMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to update lead status to Unqualified.";
+      Alert.alert("Update Failed", errMsg);
+    } finally {
+      setIsSubmittingUnqualified(false);
       setUpdatingStatusId(null);
     }
   };
@@ -789,7 +888,7 @@ export default function LeadScreen() {
       const v = (val || "").toLowerCase();
       if (v === "new") return "#2563EB";
       if (v === "contacted") return "#7C3AED";
-      if (v === "qualified") return "#059669";
+      if (v === "qualified" || v === "approved") return "#059669";
       if (v === "converted") return "#0D9488";
       if (v === "unqualified" || v === "lost" || v === "cancelled")
         return "#DC2626";
@@ -814,6 +913,7 @@ export default function LeadScreen() {
       { label: "New", value: "New", color: "#2563EB" },
       { label: "Contacted", value: "Contacted", color: "#7C3AED" },
       { label: "Qualified", value: "Qualified", color: "#059669" },
+      { label: "Approved", value: "Approved", color: "#16A34A" },
       { label: "Converted", value: "Converted", color: "#0D9488" },
       { label: "Unqualified", value: "Unqualified", color: "#DC2626" },
     ];
@@ -823,8 +923,13 @@ export default function LeadScreen() {
   const renderLeadCard = ({ item }: { item: LeadItem }) => {
     const priorityStyle = getPriorityBadge(item.priority);
     const statusStyle = getStatusBadge(item.status);
-    const isQualified = (item.status || "").toLowerCase() === "qualified";
-    const isConverted = (item.status || "").toLowerCase() === "converted";
+    const statusLower = (item.status || "").toLowerCase().trim();
+    const isQualified = statusLower === "qualified";
+    const isConverted = statusLower === "converted";
+    const isStatusLocked =
+      statusLower === "qualified" ||
+      statusLower === "approved" ||
+      statusLower === "converted";
 
     return (
       <View style={styles.leadCard}>
@@ -864,36 +969,55 @@ export default function LeadScreen() {
             </View>
 
             {/* Status Dropdown Badge */}
-            <TouchableOpacity
-              style={[
-                styles.statusBadge,
-                {
-                  backgroundColor: statusStyle.bg,
-                  borderColor: statusStyle.border,
-                },
-              ]}
-              onPress={() => handleOpenStatusPicker(item)}
-              activeOpacity={0.7}
-              disabled={updatingStatusId === item.id}
-            >
-              {updatingStatusId === item.id ? (
-                <ActivityIndicator size="small" color={statusStyle.text} />
-              ) : (
-                <>
-                  <Text
-                    style={[styles.statusText, { color: statusStyle.text }]}
-                    numberOfLines={1}
-                  >
-                    {item.status || "New"}
-                  </Text>
-                  <Ionicons
-                    name="chevron-down"
-                    size={11}
-                    color={statusStyle.text}
-                  />
-                </>
-              )}
-            </TouchableOpacity>
+            {isStatusLocked ? (
+              <View
+                style={[
+                  styles.statusBadge,
+                  {
+                    backgroundColor: statusStyle.bg,
+                    borderColor: statusStyle.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.statusText, { color: statusStyle.text }]}
+                  numberOfLines={1}
+                >
+                  {item.status || "New"}
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.statusBadge,
+                  {
+                    backgroundColor: statusStyle.bg,
+                    borderColor: statusStyle.border,
+                  },
+                ]}
+                onPress={() => handleOpenStatusPicker(item)}
+                activeOpacity={0.7}
+                disabled={updatingStatusId === item.id}
+              >
+                {updatingStatusId === item.id ? (
+                  <ActivityIndicator size="small" color={statusStyle.text} />
+                ) : (
+                  <>
+                    <Text
+                      style={[styles.statusText, { color: statusStyle.text }]}
+                      numberOfLines={1}
+                    >
+                      {item.status || "New"}
+                    </Text>
+                    <Ionicons
+                      name="chevron-down"
+                      size={11}
+                      color={statusStyle.text}
+                    />
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -1072,8 +1196,8 @@ export default function LeadScreen() {
           </View>
         ) : null}
 
-        {/* Qualified Lead: Prominent Create Quotation Action (Hidden if Converted) */}
-        {isQualified && !isConverted && (
+        {/* Create Quotation Action (Only shown when status is Qualified) */}
+        {isQualified && (
           <TouchableOpacity
             style={styles.cardCreateQuotationBtn}
             onPress={() => handleCreateQuotationFromLead(item)}
@@ -1403,6 +1527,99 @@ export default function LeadScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* UNQUALIFIED REASON TEXTINPUT MODAL */}
+      <Modal
+        visible={unqualifiedModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isSubmittingUnqualified) {
+            setUnqualifiedModalVisible(false);
+          }
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.unqualifiedModalOverlay}
+        >
+          <View style={styles.unqualifiedModalContent}>
+            <View style={styles.unqualifiedModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.unqualifiedModalTitle}>
+                  Mark Lead as Unqualified
+                </Text>
+                <Text style={styles.unqualifiedModalSubtitle} numberOfLines={1}>
+                  {targetLeadForUnqualified?.lead_number} ·{" "}
+                  {targetLeadForUnqualified?.contact_name ||
+                    targetLeadForUnqualified?.company_name ||
+                    "Lead"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.statusModalCloseBtn}
+                onPress={() => setUnqualifiedModalVisible(false)}
+                disabled={isSubmittingUnqualified}
+              >
+                <Ionicons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.unqualifiedModalBody}>
+              <Text style={styles.unqualifiedInputLabel}>
+                Reason for rejection / unqualifying{" "}
+                <Text style={styles.requiredAsterisk}>*</Text>
+              </Text>
+              <TextInput
+                style={styles.unqualifiedTextInput}
+                placeholder="Reject this"
+                placeholderTextColor="#94A3B8"
+                value={unqualifiedLostReason}
+                onChangeText={setUnqualifiedLostReason}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                editable={!isSubmittingUnqualified}
+              />
+            </View>
+
+            <View style={styles.unqualifiedModalActions}>
+              <TouchableOpacity
+                style={styles.unqualifiedCancelBtn}
+                onPress={() => setUnqualifiedModalVisible(false)}
+                disabled={isSubmittingUnqualified}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.unqualifiedCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.unqualifiedSubmitBtn,
+                  isSubmittingUnqualified && styles.unqualifiedSubmitBtnDisabled,
+                ]}
+                onPress={handleConfirmUnqualified}
+                disabled={isSubmittingUnqualified}
+                activeOpacity={0.8}
+              >
+                {isSubmittingUnqualified ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={16}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.unqualifiedSubmitBtnText}>Submit</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1412,6 +1629,104 @@ export default function LeadScreen() {
 // ==========================================
 
 const styles = StyleSheet.create({
+
+  unqualifiedModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  unqualifiedModalContent: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    width: "100%",
+    maxWidth: 420,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  unqualifiedModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
+  },
+  unqualifiedModalTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  unqualifiedModalSubtitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  unqualifiedModalBody: {
+    marginBottom: 18,
+  },
+  unqualifiedInputLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#334155",
+    marginBottom: 8,
+  },
+  requiredAsterisk: {
+    color: "#EF4444",
+  },
+  unqualifiedTextInput: {
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: "#0F172A",
+    backgroundColor: "#F8FAFC",
+    minHeight: 70,
+  },
+  unqualifiedModalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  unqualifiedCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unqualifiedCancelBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  unqualifiedSubmitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: "#DC2626",
+    justifyContent: "center",
+  },
+  unqualifiedSubmitBtnDisabled: {
+    opacity: 0.6,
+  },
+  unqualifiedSubmitBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+
   safeArea: {
     flex: 1,
     backgroundColor: "#0B2A4A",

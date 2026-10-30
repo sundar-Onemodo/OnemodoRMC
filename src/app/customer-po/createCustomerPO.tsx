@@ -52,6 +52,11 @@ interface FormLineItem {
   pump_rate: string;
 }
 
+export function cleanSalesExecutiveName(raw?: string | null): string {
+  if (!raw) return "";
+  return raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
 const DEFAULT_PUMP_OPTIONS: DropdownItem[] = [
   { id: "none", label: "None / Direct Pour", value: null },
   { id: "boom", label: "Boom Pump", value: "boom" },
@@ -79,6 +84,7 @@ export default function CreateCustomerPOScreen() {
   const [pumpOptions, setPumpOptions] = useState<DropdownItem[]>(
     DEFAULT_PUMP_OPTIONS,
   );
+  const [salesExecutives, setSalesExecutives] = useState<DropdownItem[]>([]);
 
   const [isLoadingDropdowns, setIsLoadingDropdowns] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -86,6 +92,7 @@ export default function CreateCustomerPOScreen() {
   // Form Fields
   const [selectedCustomer, setSelectedCustomer] = useState<DropdownItem | null>(null);
   const [selectedSite, setSelectedSite] = useState<DropdownItem | null>(null);
+  const [selectedSalesExecutive, setSelectedSalesExecutive] = useState<DropdownItem | null>(null);
   const [orderDate, setOrderDate] = useState<string>(() => {
     const today = new Date();
     const y = today.getFullYear();
@@ -115,7 +122,7 @@ export default function CreateCustomerPOScreen() {
 
   // Modal Pickers State
   const [pickerModalVisible, setPickerModalVisible] = useState<boolean>(false);
-  const [pickerType, setPickerType] = useState<"customer" | "site" | "mix" | "tax" | "pump">("customer");
+  const [pickerType, setPickerType] = useState<"customer" | "site" | "salesExec" | "mix" | "tax" | "pump">("customer");
   const [activeItemIndex, setActiveItemIndex] = useState<number>(0);
   const [pickerSearch, setPickerSearch] = useState<string>("");
 
@@ -264,8 +271,26 @@ export default function CreateCustomerPOScreen() {
           return DEFAULT_PUMP_OPTIONS;
         })
         .catch(() => DEFAULT_PUMP_OPTIONS),
+
+      // Sales Executives
+      axios
+        .get(`${baseURL}/sales-executives`, {
+          headers,
+          params: effectivePlantId ? { plant_id: effectivePlantId } : undefined,
+          timeout: 25000,
+        })
+        .then((res) => {
+          const list = res.data?.data?.data || res.data?.data || [];
+          return (list || []).map((se: any) => ({
+            id: se.id,
+            label: cleanSalesExecutiveName(se.label || se.name || se.full_name || `Executive #${se.id}`),
+            value: se.id,
+            extra: se,
+          }));
+        })
+        .catch(() => []),
     ])
-      .then(([custList, siteList, mixList, taxList, pumpList]) => {
+      .then(([custList, siteList, mixList, taxList, pumpList, salesExecList]) => {
         if (!isMounted) return;
         setCustomers(custList);
         setSites(siteList);
@@ -273,6 +298,9 @@ export default function CreateCustomerPOScreen() {
         setTaxes(taxList);
         if (pumpList && pumpList.length > 0) {
           setPumpOptions(pumpList);
+        }
+        if (salesExecList && salesExecList.length > 0) {
+          setSalesExecutives(salesExecList);
         }
       })
       .finally(() => {
@@ -333,7 +361,7 @@ export default function CreateCustomerPOScreen() {
   };
 
   // Open modal pickers
-  const openPicker = (type: "customer" | "site" | "mix" | "tax" | "pump", itemIdx = 0) => {
+  const openPicker = (type: "customer" | "site" | "salesExec" | "mix" | "tax" | "pump", itemIdx = 0) => {
     setPickerType(type);
     setActiveItemIndex(itemIdx);
     setPickerSearch("");
@@ -347,6 +375,12 @@ export default function CreateCustomerPOScreen() {
       setSelectedSite(null);
     } else if (pickerType === "site") {
       setSelectedSite(item);
+    } else if (pickerType === "salesExec") {
+      if (item.id === "none" || item.id === null) {
+        setSelectedSalesExecutive(null);
+      } else {
+        setSelectedSalesExecutive(item);
+      }
     } else if (pickerType === "mix") {
       const mix = item;
       updateItemField(activeItemIndex, "mix_design_id", Number(mix.id));
@@ -447,6 +481,9 @@ export default function CreateCustomerPOScreen() {
     const payload = {
       patron_id: selectedCustomer.id,
       site_id: selectedSite.id,
+      sales_executive_id: selectedSalesExecutive?.id && selectedSalesExecutive.id !== "none"
+        ? Number(selectedSalesExecutive.id)
+        : null,
       order_date: orderDate,
       is_tax_inclusive: isTaxInclusive,
       customer_po_reference: customerPoReference.trim() || null,
@@ -621,6 +658,35 @@ export default function CreateCustomerPOScreen() {
                         📍 {selectedSite.subLabel}
                       </Text>
                     )}
+                  </View>
+                  <Ionicons name="chevron-down" size={16} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Sales Executive Selector */}
+              <View style={[styles.fieldGroup, { marginTop: 12 }]}>
+                <Text style={styles.fieldLabel}>SALES EXECUTIVE</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.selectorBtn,
+                    !selectedSalesExecutive && styles.selectorBtnEmpty,
+                  ]}
+                  onPress={() => openPicker("salesExec")}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="briefcase-outline" size={18} color="#2563EB" />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.selectorText,
+                        !selectedSalesExecutive && styles.placeholderText,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {selectedSalesExecutive
+                        ? selectedSalesExecutive.label
+                        : "Select Sales Executive"}
+                    </Text>
                   </View>
                   <Ionicons name="chevron-down" size={16} color="#64748B" />
                 </TouchableOpacity>
@@ -964,7 +1030,9 @@ export default function CreateCustomerPOScreen() {
                   ? "Select Customer"
                   : pickerType === "site"
                     ? "Select Delivery Site"
-                    : pickerType === "mix"
+                    : pickerType === "salesExec"
+                      ? "Select Sales Executive"
+                      : pickerType === "mix"
                       ? "Select Mix Design"
                       : pickerType === "tax"
                         ? "Select Tax"
@@ -1001,7 +1069,9 @@ export default function CreateCustomerPOScreen() {
                     ? customers
                     : pickerType === "site"
                       ? filteredSites
-                      : pickerType === "mix"
+                      : pickerType === "salesExec"
+                        ? ([{ id: "none", label: "-- None --", subLabel: "Clear / No Sales Executive", value: null }, ...salesExecutives] as DropdownItem[])
+                        : pickerType === "mix"
                         ? mixDesigns
                         : ([{ id: 0, label: "Exempt / None", subLabel: "0%" }, ...taxes] as DropdownItem[])
                 ).filter((item: DropdownItem) =>
@@ -1017,7 +1087,9 @@ export default function CreateCustomerPOScreen() {
                     ? selectedCustomer?.id === item.id
                     : pickerType === "site"
                       ? selectedSite?.id === item.id
-                      : pickerType === "mix"
+                      : pickerType === "salesExec"
+                        ? (item.id === "none" ? !selectedSalesExecutive : selectedSalesExecutive?.id === item.id)
+                        : pickerType === "mix"
                         ? items[activeItemIndex]?.mix_design_id === item.id
                         : pickerType === "tax"
                           ? items[activeItemIndex]?.tax_id === (item.id === 0 ? null : item.id)

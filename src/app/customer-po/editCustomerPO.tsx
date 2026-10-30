@@ -51,6 +51,11 @@ interface FormLineItem {
   pump_rate: string;
 }
 
+export function cleanSalesExecutiveName(raw?: string | null): string {
+  if (!raw) return "";
+  return raw.replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
 const DEFAULT_PUMP_OPTIONS: DropdownItem[] = [
   { id: "none", label: "None / Direct Pour", value: null },
   { id: "boom", label: "Boom Pump", value: "boom" },
@@ -63,7 +68,7 @@ export default function EditCustomerPOScreen() {
   const scheme = useColorScheme();
   const colors = Colors[scheme === "dark" ? "dark" : "light"];
 
-  const params = useLocalSearchParams<{ admin_po_id?: string; id?: string }>();
+  const params = useLocalSearchParams<{ admin_po_id?: string; id?: string; quotation_id?: string }>();
   const adminPoId = params.admin_po_id || params.id;
 
   const { token, plant_id, user } = useSelector(
@@ -81,14 +86,22 @@ export default function EditCustomerPOScreen() {
   const [pumpOptions, setPumpOptions] = useState<DropdownItem[]>(
     DEFAULT_PUMP_OPTIONS,
   );
+  const [salesExecutives, setSalesExecutives] = useState<DropdownItem[]>([]);
 
   const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [referenceDisplay, setReferenceDisplay] = useState<string>("");
+  const [quotationId, setQuotationId] = useState<string | number | null>(
+    params.quotation_id || null,
+  );
+  const isLinkedToQuotation = Boolean(
+    quotationId && String(quotationId).trim() !== "" && String(quotationId) !== "null" && Number(quotationId) > 0,
+  );
 
   // Form Fields
   const [selectedCustomer, setSelectedCustomer] = useState<DropdownItem | null>(null);
   const [selectedSite, setSelectedSite] = useState<DropdownItem | null>(null);
+  const [selectedSalesExecutive, setSelectedSalesExecutive] = useState<DropdownItem | null>(null);
   const [orderDate, setOrderDate] = useState<string>("");
   const [isTaxInclusive, setIsTaxInclusive] = useState<boolean>(false);
   const [customerPoReference, setCustomerPoReference] = useState<string>("");
@@ -99,7 +112,7 @@ export default function EditCustomerPOScreen() {
 
   // Modal Pickers State
   const [pickerModalVisible, setPickerModalVisible] = useState<boolean>(false);
-  const [pickerType, setPickerType] = useState<"customer" | "site" | "mix" | "tax" | "pump">("customer");
+  const [pickerType, setPickerType] = useState<"customer" | "site" | "salesExec" | "mix" | "tax" | "pump">("customer");
   const [activeItemIndex, setActiveItemIndex] = useState<number>(0);
   const [pickerSearch, setPickerSearch] = useState<string>("");
 
@@ -261,8 +274,26 @@ export default function EditCustomerPOScreen() {
           return DEFAULT_PUMP_OPTIONS;
         })
         .catch(() => DEFAULT_PUMP_OPTIONS),
+
+      // 7. Fetch Sales Executives
+      axios
+        .get(`${baseURL}/sales-executives`, {
+          headers,
+          params: effectivePlantId ? { plant_id: effectivePlantId } : undefined,
+          timeout: 25000,
+        })
+        .then((res) => {
+          const list = res.data?.data?.data || res.data?.data || [];
+          return (list || []).map((se: any) => ({
+            id: se.id,
+            label: cleanSalesExecutiveName(se.label || se.name || se.full_name || `Executive #${se.id}`),
+            value: se.id,
+            extra: se,
+          }));
+        })
+        .catch(() => []),
     ])
-      .then(([poData, custList, siteList, mixList, taxList, pumpList]) => {
+      .then(([poData, custList, siteList, mixList, taxList, pumpList, salesExecList]) => {
         if (!isMounted) return;
 
         setCustomers(custList);
@@ -272,8 +303,25 @@ export default function EditCustomerPOScreen() {
         if (pumpList && pumpList.length > 0) {
           setPumpOptions(pumpList);
         }
+        if (salesExecList && salesExecList.length > 0) {
+          setSalesExecutives(salesExecList);
+        }
 
         if (poData) {
+          if (poData.quotation_id) {
+            setQuotationId(poData.quotation_id);
+          }
+          const seId = poData.sales_executive_id ?? poData.sales_executive?.id ?? null;
+          if (seId) {
+            const foundSe = salesExecList.find((se: any) => Number(se.id) === Number(seId));
+            setSelectedSalesExecutive(
+              foundSe || {
+                id: seId,
+                label: cleanSalesExecutiveName(poData.sales_executive?.label || poData.sales_executive?.name || `Executive #${seId}`),
+                value: seId,
+              },
+            );
+          }
           setReferenceDisplay(poData.reference || `PO #${adminPoId}`);
           setCustomerPoReference(poData.customer_po_reference || "");
           setNotes(poData.notes || "");
@@ -420,7 +468,7 @@ export default function EditCustomerPOScreen() {
   };
 
   // Open modal pickers
-  const openPicker = (type: "customer" | "site" | "mix" | "tax" | "pump", itemIdx = 0) => {
+  const openPicker = (type: "customer" | "site" | "salesExec" | "mix" | "tax" | "pump", itemIdx = 0) => {
     setPickerType(type);
     setActiveItemIndex(itemIdx);
     setPickerSearch("");
@@ -433,6 +481,12 @@ export default function EditCustomerPOScreen() {
       setSelectedSite(null);
     } else if (pickerType === "site") {
       setSelectedSite(item);
+    } else if (pickerType === "salesExec") {
+      if (item.id === "none" || item.id === null) {
+        setSelectedSalesExecutive(null);
+      } else {
+        setSelectedSalesExecutive(item);
+      }
     } else if (pickerType === "mix") {
       const mix = item;
       updateItemField(activeItemIndex, "mix_design_id", Number(mix.id));
@@ -537,6 +591,9 @@ export default function EditCustomerPOScreen() {
     const payload = {
       patron_id: selectedCustomer.id,
       site_id: selectedSite.id,
+      sales_executive_id: selectedSalesExecutive?.id && selectedSalesExecutive.id !== "none"
+        ? Number(selectedSalesExecutive.id)
+        : null,
       order_date: orderDate,
       is_tax_inclusive: isTaxInclusive,
       customer_po_reference: customerPoReference.trim() || null,
@@ -660,6 +717,21 @@ export default function EditCustomerPOScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+                        {/* QUOTATION LOCK BANNER */}
+            {isLinkedToQuotation && (
+              <View style={styles.quotationNoticeBanner}>
+                <Ionicons name="lock-closed" size={18} color="#0D9488" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.quotationNoticeTitle}>
+                    Linked to Quotation #{quotationId}
+                  </Text>
+                  <Text style={styles.quotationNoticeText}>
+                    This Customer PO was converted from Quotation #{quotationId}. Customer, delivery site, order date, and mix specifications are locked. You can only edit Sales Executive, Customer PO Reference, and Notes.
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {/* REFERENCE DISPLAY HEADER */}
             {referenceDisplay ? (
               <View style={styles.referenceBanner}>
@@ -691,23 +763,32 @@ export default function EditCustomerPOScreen() {
                   style={[
                     styles.selectorBtn,
                     !selectedCustomer && styles.selectorBtnEmpty,
+                    isLinkedToQuotation && styles.disabledSelectorBtn,
                   ]}
-                  onPress={() => openPicker("customer")}
-                  activeOpacity={0.75}
+                  onPress={isLinkedToQuotation ? undefined : () => openPicker("customer")}
+                  disabled={isLinkedToQuotation}
+                  activeOpacity={isLinkedToQuotation ? 1 : 0.75}
                 >
-                  <Ionicons name="person" size={18} color="#2563EB" />
+                  <Ionicons
+                    name={isLinkedToQuotation ? "lock-closed" : "person"}
+                    size={18}
+                    color={isLinkedToQuotation ? "#94A3B8" : "#2563EB"}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text
                       style={[
                         styles.selectorText,
                         !selectedCustomer && styles.placeholderText,
+                        isLinkedToQuotation && styles.disabledText,
                       ]}
                       numberOfLines={1}
                     >
                       {selectedCustomer ? selectedCustomer.label : "Select Customer..."}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-down" size={16} color="#64748B" />
+                  {!isLinkedToQuotation ? (
+                    <Ionicons name="chevron-down" size={16} color="#64748B" />
+                  ) : null}
                 </TouchableOpacity>
               </View>
 
@@ -718,16 +799,23 @@ export default function EditCustomerPOScreen() {
                   style={[
                     styles.selectorBtn,
                     !selectedSite && styles.selectorBtnEmpty,
+                    isLinkedToQuotation && styles.disabledSelectorBtn,
                   ]}
-                  onPress={() => openPicker("site")}
-                  activeOpacity={0.75}
+                  onPress={isLinkedToQuotation ? undefined : () => openPicker("site")}
+                  disabled={isLinkedToQuotation}
+                  activeOpacity={isLinkedToQuotation ? 1 : 0.75}
                 >
-                  <Ionicons name="location" size={18} color="#DC2626" />
+                  <Ionicons
+                    name={isLinkedToQuotation ? "lock-closed" : "location"}
+                    size={18}
+                    color={isLinkedToQuotation ? "#94A3B8" : "#DC2626"}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text
                       style={[
                         styles.selectorText,
                         !selectedSite && styles.placeholderText,
+                        isLinkedToQuotation && styles.disabledText,
                       ]}
                       numberOfLines={1}
                     >
@@ -738,6 +826,37 @@ export default function EditCustomerPOScreen() {
                         📍 {selectedSite.subLabel}
                       </Text>
                     )}
+                  </View>
+                  {!isLinkedToQuotation ? (
+                    <Ionicons name="chevron-down" size={16} color="#64748B" />
+                  ) : null}
+                </TouchableOpacity>
+              </View>
+
+              {/* Sales Executive Selector (Always Editable) */}
+              <View style={[styles.fieldGroup, { marginTop: 12 }]}>
+                <Text style={styles.fieldLabel}>SALES EXECUTIVE</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.selectorBtn,
+                    !selectedSalesExecutive && styles.selectorBtnEmpty,
+                  ]}
+                  onPress={() => openPicker("salesExec")}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="briefcase-outline" size={18} color="#2563EB" />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.selectorText,
+                        !selectedSalesExecutive && styles.placeholderText,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {selectedSalesExecutive
+                        ? selectedSalesExecutive.label
+                        : "Select Sales Executive"}
+                    </Text>
                   </View>
                   <Ionicons name="chevron-down" size={16} color="#64748B" />
                 </TouchableOpacity>
@@ -755,26 +874,47 @@ export default function EditCustomerPOScreen() {
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>ORDER DATE</Text>
                 <TouchableOpacity
-                  style={styles.selectorBtn}
-                  onPress={() => {
-                    if (orderDate) {
-                      const parts = orderDate.split("-");
-                      if (parts.length === 3) {
-                        setCalYear(parseInt(parts[0], 10));
-                        setCalMonth(parseInt(parts[1], 10) - 1);
-                      }
-                    }
-                    setDateModalVisible(true);
-                  }}
-                  activeOpacity={0.75}
+                  style={[
+                    styles.selectorBtn,
+                    isLinkedToQuotation && styles.disabledSelectorBtn,
+                  ]}
+                  onPress={
+                    isLinkedToQuotation
+                      ? undefined
+                      : () => {
+                          if (orderDate) {
+                            const parts = orderDate.split("-");
+                            if (parts.length === 3) {
+                              setCalYear(parseInt(parts[0], 10));
+                              setCalMonth(parseInt(parts[1], 10) - 1);
+                            }
+                          }
+                          setDateModalVisible(true);
+                        }
+                  }
+                  disabled={isLinkedToQuotation}
+                  activeOpacity={isLinkedToQuotation ? 1 : 0.75}
                 >
-                  <Ionicons name="calendar" size={18} color="#2563EB" />
+                  <Ionicons
+                    name={isLinkedToQuotation ? "lock-closed" : "calendar"}
+                    size={18}
+                    color={isLinkedToQuotation ? "#94A3B8" : "#2563EB"}
+                  />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.selectorText}>{orderDate || "Choose Date..."}</Text>
+                    <Text
+                      style={[
+                        styles.selectorText,
+                        isLinkedToQuotation && styles.disabledText,
+                      ]}
+                    >
+                      {orderDate || "Choose Date..."}
+                    </Text>
                   </View>
-                  <View style={styles.dateChangeBadge}>
-                    <Text style={styles.dateChangeBadgeText}>Pick Date</Text>
-                  </View>
+                  {!isLinkedToQuotation && (
+                    <View style={styles.dateChangeBadge}>
+                      <Text style={styles.dateChangeBadgeText}>Pick Date</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -801,6 +941,7 @@ export default function EditCustomerPOScreen() {
                   </Text>
                 </View>
                 <Switch
+                  disabled={isLinkedToQuotation}
                   value={isTaxInclusive}
                   onValueChange={setIsTaxInclusive}
                   trackColor={{ false: "#CBD5E1", true: "#93C5FD" }}
@@ -820,6 +961,7 @@ export default function EditCustomerPOScreen() {
                   />
                   <Text style={styles.sectionTitle}>Order Items & Mix Spec</Text>
                 </View>
+                {!isLinkedToQuotation && (
                 <TouchableOpacity
                   style={styles.addItemBtn}
                   onPress={handleAddItem}
@@ -828,6 +970,7 @@ export default function EditCustomerPOScreen() {
                   <Ionicons name="add" size={16} color="#FFFFFF" />
                   <Text style={styles.addItemBtnText}>Add Item</Text>
                 </TouchableOpacity>
+                )}
               </View>
 
               {items.map((item, index) => (
@@ -837,7 +980,7 @@ export default function EditCustomerPOScreen() {
                     <View style={styles.itemNumberBadge}>
                       <Text style={styles.itemNumberText}>Item #{index + 1}</Text>
                     </View>
-                    {items.length > 1 && (
+                    {items.length > 1 && !isLinkedToQuotation && (
                       <TouchableOpacity
                         onPress={() => handleRemoveItem(index)}
                         style={styles.removeItemBtn}
@@ -854,27 +997,32 @@ export default function EditCustomerPOScreen() {
                       style={[
                         styles.selectorBtn,
                         !item.mix_design_id && styles.selectorBtnEmpty,
+                        isLinkedToQuotation && styles.disabledSelectorBtn,
                       ]}
-                      onPress={() => openPicker("mix", index)}
-                      activeOpacity={0.75}
+                      onPress={isLinkedToQuotation ? undefined : () => openPicker("mix", index)}
+                      disabled={isLinkedToQuotation}
+                      activeOpacity={isLinkedToQuotation ? 1 : 0.75}
                     >
                       <MaterialCommunityIcons
-                        name="cube-outline"
+                        name={isLinkedToQuotation ? "lock" : "cube-outline"}
                         size={18}
-                        color="#2563EB"
+                        color={isLinkedToQuotation ? "#94A3B8" : "#2563EB"}
                       />
                       <View style={{ flex: 1 }}>
                         <Text
                           style={[
                             styles.selectorText,
                             !item.mix_design_id && styles.placeholderText,
+                            isLinkedToQuotation && styles.disabledText,
                           ]}
                           numberOfLines={1}
                         >
                           {item.mix_design_name || "Choose Concrete Mix Grade..."}
                         </Text>
                       </View>
-                      <Ionicons name="chevron-down" size={16} color="#64748B" />
+                      {!isLinkedToQuotation && (
+                        <Ionicons name="chevron-down" size={16} color="#64748B" />
+                      )}
                     </TouchableOpacity>
                   </View>
 
@@ -884,9 +1032,13 @@ export default function EditCustomerPOScreen() {
                       <Text style={styles.fieldLabel}>QUANTITY (m³) <Text style={styles.asterisk}>*</Text></Text>
                       <View style={styles.inputContainer}>
                         <TextInput
-                          style={styles.textInput}
+                          style={[
+                            styles.textInput,
+                            isLinkedToQuotation && styles.disabledInput,
+                          ]}
                           keyboardType="numeric"
                           value={item.quantity}
+                          editable={!isLinkedToQuotation}
                           onChangeText={(v) => updateItemField(index, "quantity", v)}
                           placeholder="e.g. 50"
                           placeholderTextColor="#94A3B8"
@@ -899,9 +1051,13 @@ export default function EditCustomerPOScreen() {
                       <Text style={styles.fieldLabel}>RATE (₹/m³) <Text style={styles.asterisk}>*</Text></Text>
                       <View style={styles.inputContainer}>
                         <TextInput
-                          style={styles.textInput}
+                          style={[
+                            styles.textInput,
+                            isLinkedToQuotation && styles.disabledInput,
+                          ]}
                           keyboardType="numeric"
                           value={item.rate}
+                          editable={!isLinkedToQuotation}
                           onChangeText={(v) => updateItemField(index, "rate", v)}
                           placeholder="e.g. 4500"
                           placeholderTextColor="#94A3B8"
@@ -915,17 +1071,33 @@ export default function EditCustomerPOScreen() {
                   <View style={[styles.fieldGroup, { marginTop: 10 }]}>
                     <Text style={styles.fieldLabel}>APPLICABLE TAX</Text>
                     <TouchableOpacity
-                      style={styles.selectorBtn}
-                      onPress={() => openPicker("tax", index)}
-                      activeOpacity={0.75}
+                      style={[
+                        styles.selectorBtn,
+                        isLinkedToQuotation && styles.disabledSelectorBtn,
+                      ]}
+                      onPress={isLinkedToQuotation ? undefined : () => openPicker("tax", index)}
+                      disabled={isLinkedToQuotation}
+                      activeOpacity={isLinkedToQuotation ? 1 : 0.75}
                     >
-                      <Ionicons name="receipt-outline" size={17} color="#2563EB" />
+                      <Ionicons
+                        name={isLinkedToQuotation ? "lock-closed" : "receipt-outline"}
+                        size={17}
+                        color={isLinkedToQuotation ? "#94A3B8" : "#2563EB"}
+                      />
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.selectorText} numberOfLines={1}>
+                        <Text
+                          style={[
+                            styles.selectorText,
+                            isLinkedToQuotation && styles.disabledText,
+                          ]}
+                          numberOfLines={1}
+                        >
                           {item.tax_name || "Select Tax (or None)..."}
                         </Text>
                       </View>
-                      <Ionicons name="chevron-down" size={16} color="#64748B" />
+                      {!isLinkedToQuotation && (
+                        <Ionicons name="chevron-down" size={16} color="#64748B" />
+                      )}
                     </TouchableOpacity>
                   </View>
 
@@ -934,21 +1106,33 @@ export default function EditCustomerPOScreen() {
                     <View style={[styles.fieldGroup, { flex: 1.2 }]}>
                       <Text style={styles.fieldLabel}>CONCRETE PUMP</Text>
                       <TouchableOpacity
-                        style={styles.selectorBtn}
-                        onPress={() => openPicker("pump", index)}
-                        activeOpacity={0.75}
+                        style={[
+                          styles.selectorBtn,
+                          isLinkedToQuotation && styles.disabledSelectorBtn,
+                        ]}
+                        onPress={isLinkedToQuotation ? undefined : () => openPicker("pump", index)}
+                        disabled={isLinkedToQuotation}
+                        activeOpacity={isLinkedToQuotation ? 1 : 0.75}
                       >
                         <MaterialCommunityIcons
-                          name="pipe-leak"
+                          name={isLinkedToQuotation ? "lock" : "pipe-leak"}
                           size={17}
-                          color="#7C3AED"
+                          color={isLinkedToQuotation ? "#94A3B8" : "#7C3AED"}
                         />
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.selectorText} numberOfLines={1}>
+                          <Text
+                            style={[
+                              styles.selectorText,
+                              isLinkedToQuotation && styles.disabledText,
+                            ]}
+                            numberOfLines={1}
+                          >
                             {item.concrete_pump || "Direct / None"}
                           </Text>
                         </View>
-                        <Ionicons name="chevron-down" size={14} color="#64748B" />
+                        {!isLinkedToQuotation && (
+                          <Ionicons name="chevron-down" size={14} color="#64748B" />
+                        )}
                       </TouchableOpacity>
                     </View>
 
@@ -956,9 +1140,13 @@ export default function EditCustomerPOScreen() {
                       <Text style={styles.fieldLabel}>PUMP RATE</Text>
                       <View style={styles.inputContainer}>
                         <TextInput
-                          style={styles.textInput}
+                          style={[
+                            styles.textInput,
+                            isLinkedToQuotation && styles.disabledInput,
+                          ]}
                           keyboardType="numeric"
                           value={item.pump_rate}
+                          editable={!isLinkedToQuotation}
                           onChangeText={(v) => updateItemField(index, "pump_rate", v)}
                           placeholder="0"
                           placeholderTextColor="#94A3B8"
@@ -1083,7 +1271,9 @@ export default function EditCustomerPOScreen() {
                   ? "Select Customer"
                   : pickerType === "site"
                     ? "Select Delivery Site"
-                    : pickerType === "mix"
+                    : pickerType === "salesExec"
+                      ? "Select Sales Executive"
+                      : pickerType === "mix"
                       ? "Select Mix Design"
                       : pickerType === "tax"
                         ? "Select Tax"
@@ -1120,7 +1310,9 @@ export default function EditCustomerPOScreen() {
                     ? customers
                     : pickerType === "site"
                       ? filteredSites
-                      : pickerType === "mix"
+                      : pickerType === "salesExec"
+                        ? ([{ id: "none", label: "-- None --", subLabel: "Clear / No Sales Executive", value: null }, ...salesExecutives] as DropdownItem[])
+                        : pickerType === "mix"
                         ? mixDesigns
                         : ([{ id: 0, label: "Exempt / None", subLabel: "0%" }, ...taxes] as DropdownItem[])
                 ).filter((item: DropdownItem) =>
@@ -1136,7 +1328,9 @@ export default function EditCustomerPOScreen() {
                     ? selectedCustomer?.id === item.id
                     : pickerType === "site"
                       ? selectedSite?.id === item.id
-                      : pickerType === "mix"
+                      : pickerType === "salesExec"
+                        ? (item.id === "none" ? !selectedSalesExecutive : selectedSalesExecutive?.id === item.id)
+                        : pickerType === "mix"
                         ? items[activeItemIndex]?.mix_design_id === item.id
                         : pickerType === "tax"
                           ? items[activeItemIndex]?.tax_id === (item.id === 0 ? null : item.id)
@@ -1270,6 +1464,41 @@ export default function EditCustomerPOScreen() {
 }
 
 const styles = StyleSheet.create({
+  disabledSelectorBtn: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#CBD5E1",
+  },
+  disabledText: {
+    color: "#64748B",
+  },
+  disabledInput: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#CBD5E1",
+    color: "#64748B",
+  },
+  quotationNoticeBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#F0FDFA",
+    borderWidth: 1,
+    borderColor: "#99F6E4",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+    gap: 10,
+  },
+  quotationNoticeTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0F766E",
+    marginBottom: 2,
+  },
+  quotationNoticeText: {
+    fontSize: 12,
+    color: "#115E59",
+    lineHeight: 17,
+  },
+
   safeArea: {
     flex: 1,
     backgroundColor: "#0F172A",

@@ -284,13 +284,6 @@ export const STATUS_OPTIONS = [
   { value: "cancelled", label: "Cancelled", dot: "#EF4444" },
 ];
 
-const STATUS_FILTERS = [
-  "All",
-  "Scheduled",
-  "In Transit",
-  "Completed",
-  "Cancelled",
-];
 
 export default function BatchingScheduleScreen() {
   const router = useRouter();
@@ -304,7 +297,6 @@ export default function BatchingScheduleScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [activeFilter, setActiveFilter] = useState<string>("All");
 
   const isFetchingRef = useRef(false);
 
@@ -421,15 +413,6 @@ export default function BatchingScheduleScreen() {
   // Filtered Schedules
   const filteredSchedules = useMemo(() => {
     return schedules.filter((item) => {
-      // Status filter
-      if (activeFilter !== "All") {
-        const itemStatus = (item.status || "").toLowerCase().replace(/_/g, " ");
-        const filterTarget = activeFilter.toLowerCase().replace(/_/g, " ");
-        if (itemStatus !== filterTarget) {
-          return false;
-        }
-      }
-
       // Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -450,7 +433,7 @@ export default function BatchingScheduleScreen() {
 
       return true;
     });
-  }, [schedules, activeFilter, searchQuery]);
+  }, [schedules, searchQuery]);
 
   // Aggregate stats
   const stats = useMemo(() => {
@@ -478,12 +461,6 @@ export default function BatchingScheduleScreen() {
       inTransitCount,
     };
   }, [schedules]);
-
-  // Status Modal & Edit
-  const [statusModalVisible, setStatusModalVisible] = useState<boolean>(false);
-  const [selectedScheduleForStatus, setSelectedScheduleForStatus] =
-    useState<BatchScheduleItem | null>(null);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
 
   // Navigate to Create Screen
   const handleNavigateToCreate = () => {
@@ -514,118 +491,6 @@ export default function BatchingScheduleScreen() {
         data: JSON.stringify(item),
       },
     });
-  };
-
-  // Open Status Change Modal
-  const handleOpenStatusModal = (item: BatchScheduleItem) => {
-    setSelectedScheduleForStatus(item);
-    setStatusModalVisible(true);
-  };
-
-  // Submit Status Change via PUT /batch-schedules/{schedule}
-  const handleUpdateStatus = async (newStatus: string) => {
-    if (!selectedScheduleForStatus) return;
-    const cleanStatus = normalizeStatusForApi(newStatus);
-    setIsUpdatingStatus(true);
-
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    };
-    if (token) {
-      const cleanToken = token.trim();
-      headers["Authorization"] = cleanToken.startsWith("Bearer")
-        ? cleanToken
-        : `Bearer ${cleanToken}`;
-    }
-    if (plant_id !== null && plant_id !== undefined) {
-      headers["X-Plant-Id"] = String(plant_id);
-    }
-
-    const payload = {
-      schedule_date:
-        selectedScheduleForStatus.schedule_date ||
-        new Date().toISOString().split("T")[0],
-      sales_order_id: Number(selectedScheduleForStatus.sales_order_id || 0),
-      site_id: Number(
-        selectedScheduleForStatus.site_id ||
-          selectedScheduleForStatus.site?.id ||
-          0,
-      ),
-      mix_design_id: Number(
-        selectedScheduleForStatus.mix_design_id ||
-          selectedScheduleForStatus.mix_design?.id ||
-          0,
-      ),
-      qty_m3: parseFloat(String(selectedScheduleForStatus.qty_m3 || 0)),
-      order_volume_m3: parseFloat(
-        String(selectedScheduleForStatus.order_volume_m3 || 0),
-      ),
-      pump_type: selectedScheduleForStatus.pump_type || "direct_pour",
-      status: cleanStatus,
-      notes:
-        selectedScheduleForStatus.notes?.trim() ||
-        "Status updated from batch schedule list",
-      dispatch_time:
-        selectedScheduleForStatus.dispatch_time ||
-        selectedScheduleForStatus.batching_time ||
-        new Date().toISOString().slice(0, 19),
-      batching_time:
-        selectedScheduleForStatus.batching_time ||
-        selectedScheduleForStatus.dispatch_time ||
-        new Date().toISOString().slice(0, 19),
-    };
-
-    console.log(
-      `[BatchSchedule] Changing Status for Schedule #${selectedScheduleForStatus.id} -> "${cleanStatus}"`,
-    );
-    console.log(
-      "[BatchSchedule] PUT Body Payload:",
-      JSON.stringify(payload, null, 2),
-    );
-
-    try {
-      const res = await axios.put(
-        `${baseURL}/batch-schedules/${selectedScheduleForStatus.id}`,
-        payload,
-        {
-          headers,
-          params: { schedule: selectedScheduleForStatus.id },
-          timeout: 20000,
-        },
-      );
-
-      console.log("[BatchSchedule] Status Update API Response:", res.data);
-
-      // Optimistically update local schedules list
-      setSchedules((prev) =>
-        prev.map((s) =>
-          s.id === selectedScheduleForStatus.id
-            ? { ...s, status: cleanStatus }
-            : s,
-        ),
-      );
-      setStatusModalVisible(false);
-      setSelectedScheduleForStatus(null);
-      Alert.alert(
-        "Status Updated",
-        res.data?.message ||
-          `Batch status updated to "${cleanStatus.replace(/_/g, " ")}" successfully.`,
-      );
-      fetchSchedules(true);
-    } catch (err: any) {
-      console.warn(
-        "[BatchSchedule] Error updating status:",
-        err?.response?.data || err?.message,
-      );
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to update batch status. Please try again.";
-      Alert.alert("Status Update Failed", msg);
-    } finally {
-      setIsUpdatingStatus(false);
-    }
   };
 
   // Render individual card
@@ -674,17 +539,15 @@ export default function BatchingScheduleScreen() {
             )}
           </View>
 
-          {/* Top Status Dropdown Badge: Clicking it opens status change modal */}
-          <TouchableOpacity
+          {/* Top Status Badge */}
+          <View
             style={[
-              styles.statusBadgeInteractive,
+              styles.statusBadge,
               {
                 backgroundColor: statusTheme.bg,
                 borderColor: statusTheme.border,
               },
             ]}
-            onPress={() => handleOpenStatusModal(item)}
-            activeOpacity={0.75}
           >
             <View
               style={[styles.statusDot, { backgroundColor: statusTheme.dot }]}
@@ -692,13 +555,7 @@ export default function BatchingScheduleScreen() {
             <Text style={[styles.statusText, { color: statusTheme.text }]}>
               {statusTheme.label}
             </Text>
-            <Ionicons
-              name="chevron-down"
-              size={12}
-              color={statusTheme.text}
-              style={{ marginLeft: 3 }}
-            />
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* Date & Pump Type Row */}
@@ -957,38 +814,7 @@ export default function BatchingScheduleScreen() {
             </View>
           </View>
 
-          {/* STATUS FILTER CHIPS */}
-          <View style={styles.filterSection}>
-            <FlatList
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              data={STATUS_FILTERS}
-              keyExtractor={(item) => item}
-              contentContainerStyle={styles.filterScroll}
-              renderItem={({ item }) => {
-                const isActive = activeFilter === item;
-                return (
-                  <TouchableOpacity
-                    style={[
-                      styles.filterChip,
-                      isActive && styles.filterChipActive,
-                    ]}
-                    onPress={() => setActiveFilter(item)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        styles.filterChipText,
-                        isActive && styles.filterChipTextActive,
-                      ]}
-                    >
-                      {item}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          </View>
+
 
           {/* ERROR MESSAGE */}
           {errorMessage ? (
@@ -1028,8 +854,8 @@ export default function BatchingScheduleScreen() {
                 />
                 <Text style={styles.emptyTitle}>No Batch Schedules Found</Text>
                 <Text style={styles.emptySubtitle}>
-                  {searchQuery || activeFilter !== "All"
-                    ? "Try resetting filters or your search keyword."
+                  {searchQuery
+                    ? "Try resetting your search keyword."
                     : "No batch schedules registered for this plant yet. Tap below to create one."}
                 </Text>
                 <TouchableOpacity
@@ -1058,109 +884,7 @@ export default function BatchingScheduleScreen() {
         </>
       )}
 
-      {/* STATUS CHANGE DROPDOWN MODAL */}
-      <Modal
-        visible={statusModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!isUpdatingStatus) {
-            setStatusModalVisible(false);
-            setSelectedScheduleForStatus(null);
-          }
-        }}
-      >
-        <TouchableOpacity
-          style={styles.statusModalOverlay}
-          activeOpacity={1}
-          onPress={() => {
-            if (!isUpdatingStatus) {
-              setStatusModalVisible(false);
-              setSelectedScheduleForStatus(null);
-            }
-          }}
-        >
-          <View
-            style={styles.simpleDropdownCard}
-            onStartShouldSetResponder={() => true}
-          >
-            <View style={styles.simpleDropdownHeader}>
-              <View>
-                <Text style={styles.simpleDropdownTitle}>Select Status</Text>
-                <Text style={styles.simpleDropdownSub}>
-                  {selectedScheduleForStatus?.pour_reference ||
-                    `Schedule #${selectedScheduleForStatus?.id || ""}`}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  if (!isUpdatingStatus) {
-                    setStatusModalVisible(false);
-                    setSelectedScheduleForStatus(null);
-                  }
-                }}
-                disabled={isUpdatingStatus}
-                style={styles.simpleDropdownCloseBtn}
-              >
-                <Ionicons name="close" size={18} color="#64748B" />
-              </TouchableOpacity>
-            </View>
-
-            {isUpdatingStatus ? (
-              <View style={styles.simpleDropdownLoading}>
-                <ActivityIndicator size="small" color="#2563EB" />
-                <Text style={styles.simpleDropdownLoadingText}>
-                  Updating status...
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.simpleDropdownList}>
-                {STATUS_OPTIONS.map((opt) => {
-                  const currentStatus = normalizeStatusForApi(
-                    selectedScheduleForStatus?.status || "",
-                  );
-                  const isSelected = currentStatus === opt.value;
-                  return (
-                    <TouchableOpacity
-                      key={opt.value}
-                      style={[
-                        styles.simpleDropdownItem,
-                        isSelected && styles.simpleDropdownItemActive,
-                      ]}
-                      onPress={() => handleUpdateStatus(opt.value)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.simpleDropdownItemLeft}>
-                        <View
-                          style={[
-                            styles.simpleDropdownDot,
-                            { backgroundColor: opt.dot },
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.simpleDropdownLabel,
-                            isSelected && styles.simpleDropdownLabelActive,
-                          ]}
-                        >
-                          {opt.label}
-                        </Text>
-                      </View>
-                      {isSelected ? (
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={18}
-                          color="#2563EB"
-                        />
-                      ) : null}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      
     </SafeAreaView>
   );
 }

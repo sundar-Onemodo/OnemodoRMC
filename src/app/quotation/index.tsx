@@ -140,9 +140,15 @@ export const formatDate = (dateStr?: string | null): string => {
 };
 
 export const normalizeQuotationStatus = (
-  status: number | string | null | undefined,
+  status: any,
 ): number => {
   if (status === null || status === undefined) return 0;
+  if (typeof status === "object") {
+    if (status.value !== undefined) return normalizeQuotationStatus(status.value);
+    if (status.id !== undefined) return normalizeQuotationStatus(status.id);
+    if (status.name !== undefined) return normalizeQuotationStatus(status.name);
+    if (status.status !== undefined) return normalizeQuotationStatus(status.status);
+  }
   if (typeof status === "number") return status;
   const str = String(status).trim().toLowerCase();
   if (str === "approved" || str === "2") return 2;
@@ -301,29 +307,26 @@ async function reviewQuotationApi(
   comment: string,
 ) {
   const headers = buildQuotationHeaders(token, plantId, true);
-  const params: Record<string, any> = {
-    quotation: String(quotationId),
-  };
-  if (plantId !== null && plantId !== undefined) {
-    params.plant_id = String(plantId);
-  }
   const body = {
     decision,
     comment,
+  };
+  const params = {
+    quotation: quotationId,
   };
 
   console.log(
     `[Quotation Review] POST ${baseURL}/quotations/${quotationId}/review`,
     {
       body,
-      params,
       headers,
+      params,
     },
   );
 
   return axios.post(`${baseURL}/quotations/${quotationId}/review`, body, {
-    params,
     headers,
+    params,
   });
 }
 
@@ -376,7 +379,10 @@ const QuotationCard = React.memo(function QuotationCard({
   onConvertToCustomerPO,
   isConverting = false,
 }: QuotationCardProps) {
-  const isApproved = normalizeQuotationStatus(item.status) === 2;
+  const statusCode = normalizeQuotationStatus(item.status);
+  const isApproved = statusCode === 2;
+  const isSent = statusCode === 1;
+  const canEdit = statusCode === 0;
   const isPOConverted =
     Number(item.is_customer_po) === 1 ||
     String(item.is_customer_po) === "1" ||
@@ -608,7 +614,7 @@ const QuotationCard = React.memo(function QuotationCard({
             <Text style={styles.actionViewText}>View</Text>
           </TouchableOpacity>
 
-          {!isApproved && (
+          {canEdit && (
             <TouchableOpacity
               style={styles.actionEditBtn}
               onPress={() => onOpenEdit(item)}
@@ -681,7 +687,7 @@ export default function QuotationScreen({
   const [viewModalVisible, setViewModalVisible] = useState<boolean>(false);
   const [viewingQuotation, setViewingQuotation] = useState<QuotationItem | null>(null);
   const [viewLoading, setViewLoading] = useState<boolean>(false);
-  const [actionLoading, setActionLoading] = useState<"approve" | "reject" | "convert" | null>(null);
+  const [actionLoading, setActionLoading] = useState<"approve" | "reject" | "convert" | "send" | null>(null);
   const [convertingId, setConvertingId] = useState<string | null>(null);
 
   // Reject Dialog States
@@ -956,10 +962,18 @@ export default function QuotationScreen({
 
   const handleOpenEdit = useCallback(
     (item: QuotationItem) => {
-      if (normalizeQuotationStatus(item.status) === 2) {
+      const status = normalizeQuotationStatus(item.status);
+      if (status === 2) {
         Alert.alert(
           "Quotation Approved",
           "This quotation has already been approved and cannot be edited.",
+        );
+        return;
+      }
+      if (status === 1) {
+        Alert.alert(
+          "Quotation Sent",
+          "This quotation has already been sent and cannot be edited.",
         );
         return;
       }
@@ -989,6 +1003,81 @@ export default function QuotationScreen({
       });
     },
     [plant_id, user],
+  );
+
+  const handleSubmitQuotationStatus = useCallback(
+    (item: QuotationItem) => {
+      Alert.alert(
+        "Send Quotation",
+        `Are you sure you want to submit/send Quotation "${item.reference}"?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Send",
+            style: "default",
+            onPress: async () => {
+              const targetPlantId =
+                plant_id ??
+                item.plant_id ??
+                user?.default_plant_id ??
+                (user as any)?.plant_id ??
+                null;
+
+              setActionLoading("send");
+              try {
+                const cleanToken = token ? token.trim() : "";
+                const headers: Record<string, string> = {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                };
+                if (cleanToken) {
+                  headers["Authorization"] = cleanToken.startsWith("Bearer ")
+                    ? cleanToken
+                    : `Bearer ${cleanToken}`;
+                }
+                if (targetPlantId !== null && targetPlantId !== undefined) {
+                  headers["X-Plant-Id"] = String(targetPlantId);
+                }
+
+                console.log(
+                  `[Quotation] POST ${baseURL}/quotations/${item.id}/submit`,
+                  { quotation: item.id },
+                );
+
+                const res = await axios.post(
+                  `${baseURL}/quotations/${item.id}/submit`,
+                  {},
+                  {
+                    headers,
+                    params: { quotation: item.id },
+                    timeout: 25000,
+                  },
+                );
+
+                console.log("[Quotation] Submit response:", res.data);
+                updateQuotationInState(item.id, { status: 1 });
+                Alert.alert(
+                  "Quotation Sent",
+                  res.data?.message ||
+                    `Quotation ${item.reference} has been submitted successfully and is now awaiting approval.`,
+                );
+              } catch (err: any) {
+                console.error("[Quotation] Submit error:", err);
+                const errMsg =
+                  err?.response?.data?.message ||
+                  err?.response?.data?.error ||
+                  err?.message ||
+                  "Failed to send quotation.";
+                Alert.alert("Send Failed", errMsg);
+              } finally {
+                setActionLoading(null);
+              }
+            },
+          },
+        ],
+      );
+    },
+    [token, plant_id, user, updateQuotationInState],
   );
 
   const handleApproveQuotation = useCallback(
@@ -1026,7 +1115,7 @@ export default function QuotationScreen({
                     `Quotation ${item.reference} has been approved successfully. You can now convert it to a Customer PO.`,
                 );
               } catch (err: any) {
-                console.error("[Quotation] Approve error:", err);
+                console.error("[Quotation] Approve error:", err?.response?.data || err?.message || err);
                 const errMsg =
                   err?.response?.data?.message ||
                   err?.response?.data?.error ||
@@ -1079,7 +1168,7 @@ export default function QuotationScreen({
           `Quotation ${rejectTargetItem.reference} has been marked as Rejected.`,
       );
     } catch (err: any) {
-      console.error("[Quotation] Reject error:", err);
+      console.error("[Quotation] Reject error:", err?.response?.data || err?.message || err);
       const errMsg =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
@@ -1756,77 +1845,103 @@ export default function QuotationScreen({
             ) : null}
 
             {/* Modal Footer Actions */}
-            {viewingQuotation && (
-              <View style={styles.viewModalFooter}>
-                {normalizeQuotationStatus(viewingQuotation.status) !== 2 ? (
-                  <>
+            {viewingQuotation && (() => {
+              const currentStatus = normalizeQuotationStatus(viewingQuotation.status);
+              return (
+                <View style={styles.viewModalFooter}>
+                  {currentStatus === 0 ? (
+                    // Draft status: Show "Sent" button
                     <TouchableOpacity
-                      style={styles.modalBtnReject}
-                      onPress={() => handleOpenRejectModal(viewingQuotation)}
+                      style={styles.modalBtnSend}
+                      onPress={() => handleSubmitQuotationStatus(viewingQuotation)}
                       activeOpacity={0.8}
                       disabled={Boolean(actionLoading)}
                     >
-                      {actionLoading === "reject" ? (
-                        <ActivityIndicator size="small" color="#DC2626" />
-                      ) : (
-                        <>
-                          <Ionicons
-                            name="close-circle-outline"
-                            size={18}
-                            color="#DC2626"
-                          />
-                          <Text style={styles.modalBtnRejectText}>Reject</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.modalBtnApprove}
-                      onPress={() => handleApproveQuotation(viewingQuotation)}
-                      activeOpacity={0.8}
-                      disabled={Boolean(actionLoading)}
-                    >
-                      {actionLoading === "approve" ? (
+                      {actionLoading === "send" ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
                       ) : (
                         <>
                           <Ionicons
-                            name="checkmark-circle-outline"
+                            name="paper-plane"
                             size={18}
                             color="#FFFFFF"
                           />
-                          <Text style={styles.modalBtnApproveText}>Approve</Text>
+                          <Text style={styles.modalBtnSendText}>Sent</Text>
                         </>
                       )}
                     </TouchableOpacity>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.modalBtnConvert}
-                    onPress={() => handleConvertToCustomerPO(viewingQuotation)}
-                    activeOpacity={0.8}
-                    disabled={Boolean(actionLoading)}
-                  >
-                    {actionLoading === "convert" ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <>
-                        <MaterialCommunityIcons
-                          name="swap-horizontal"
-                          size={20}
-                          color="#FFFFFF"
-                        />
-                        <Text style={styles.modalBtnConvertText}>
-                          {Number(viewingQuotation.is_customer_po) === 1
-                            ? "Converted to Customer PO"
-                            : "Convert to Customer PO"}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
+                  ) : currentStatus === 1 ? (
+                    // Sent status: Show Reject and Approve buttons
+                    <>
+                      <TouchableOpacity
+                        style={styles.modalBtnReject}
+                        onPress={() => handleOpenRejectModal(viewingQuotation)}
+                        activeOpacity={0.8}
+                        disabled={Boolean(actionLoading)}
+                      >
+                        {actionLoading === "reject" ? (
+                          <ActivityIndicator size="small" color="#DC2626" />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name="close-circle-outline"
+                              size={18}
+                              color="#DC2626"
+                            />
+                            <Text style={styles.modalBtnRejectText}>Reject</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.modalBtnApprove}
+                        onPress={() => handleApproveQuotation(viewingQuotation)}
+                        activeOpacity={0.8}
+                        disabled={Boolean(actionLoading)}
+                      >
+                        {actionLoading === "approve" ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name="checkmark-circle-outline"
+                              size={18}
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.modalBtnApproveText}>Approve</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </>
+                  ) : currentStatus === 2 ? (
+                    // Approved status: Show Convert to Customer PO button
+                    <TouchableOpacity
+                      style={styles.modalBtnConvert}
+                      onPress={() => handleConvertToCustomerPO(viewingQuotation)}
+                      activeOpacity={0.8}
+                      disabled={Boolean(actionLoading)}
+                    >
+                      {actionLoading === "convert" ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons
+                            name="swap-horizontal"
+                            size={20}
+                            color="#FFFFFF"
+                          />
+                          <Text style={styles.modalBtnConvertText}>
+                            {Number(viewingQuotation.is_customer_po) === 1
+                              ? "Converted to Customer PO"
+                              : "Convert to Customer PO"}
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            })()}
           </View>
         </View>
       </Modal>
@@ -2640,6 +2755,26 @@ const styles = StyleSheet.create({
     borderTopColor: "#E2E8F0",
     backgroundColor: "#FFFFFF",
     gap: 10,
+  },
+  modalBtnSend: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2563EB",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: "#2563EB",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  modalBtnSendText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
   },
   modalBtnApprove: {
     flex: 1,

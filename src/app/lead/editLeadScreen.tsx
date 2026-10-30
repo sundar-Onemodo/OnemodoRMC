@@ -1027,34 +1027,60 @@ export default function EditLeadScreen({
                   <Text style={styles.fieldLabel} numberOfLines={1}>
                     STATUS
                   </Text>
-                  <TouchableOpacity
-                    style={styles.dropdownTriggerCompact}
-                    onPress={() => setClassificationPicker("status")}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.dropdownTriggerLeftCompact}>
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 4,
-                          backgroundColor:
-                            statusOptions.find(
-                              (s) =>
-                                s.value.toLowerCase() === status.toLowerCase(),
-                            )?.color || "#2563EB",
-                          marginRight: 5,
-                        }}
-                      />
-                      <Text
-                        style={styles.dropdownTriggerTextCompact}
-                        numberOfLines={1}
-                      >
-                        {status}
-                      </Text>
+                  {["qualified", "approved", "converted"].includes((status || "").toLowerCase().trim()) ? (
+                    <View style={styles.dropdownTriggerCompact}>
+                      <View style={styles.dropdownTriggerLeftCompact}>
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor:
+                              statusOptions.find(
+                                (s) =>
+                                  s.value.toLowerCase() === status.toLowerCase(),
+                              )?.color || "#2563EB",
+                            marginRight: 5,
+                          }}
+                        />
+                        <Text
+                          style={styles.dropdownTriggerTextCompact}
+                          numberOfLines={1}
+                        >
+                          {status}
+                        </Text>
+                      </View>
                     </View>
-                    <Ionicons name="chevron-down" size={14} color="#64748B" />
-                  </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.dropdownTriggerCompact}
+                      onPress={() => setClassificationPicker("status")}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.dropdownTriggerLeftCompact}>
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor:
+                              statusOptions.find(
+                                (s) =>
+                                  s.value.toLowerCase() === status.toLowerCase(),
+                              )?.color || "#2563EB",
+                            marginRight: 5,
+                          }}
+                        />
+                        <Text
+                          style={styles.dropdownTriggerTextCompact}
+                          numberOfLines={1}
+                        >
+                          {status}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-down" size={14} color="#64748B" />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* 3. Lead Source Dropdown */}

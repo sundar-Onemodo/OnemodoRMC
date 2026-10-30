@@ -128,7 +128,7 @@ const formatAmountWithDecimals = (
 export function cleanSalesExecutiveName(rawName?: string | null): string {
   if (!rawName) return "";
   return rawName.replace(/\s*\([^)]*\)\s*$/, "").trim();
-};
+}
 
 // ==========================================
 // MAIN COMPONENT: CREATE QUOTATION SCREEN
@@ -273,8 +273,13 @@ export default function CreateQuotationScreen({
       setValidityDate(getFutureDateString(15));
       setIsTaxInclusive(false);
 
-      if (salesExecs.length > 0) {
-        setSelectedSalesExecutiveItem((prev) => prev || salesExecs[0]);
+      if (passedLead?.sales_executive_id && salesExecs.length > 0) {
+        const matched = salesExecs.find(
+          (se: any) => Number(se.id) === Number(passedLead.sales_executive_id),
+        );
+        setSelectedSalesExecutiveItem((prev) => prev || matched || null);
+      } else {
+        setSelectedSalesExecutiveItem((prev) => prev || null);
       }
 
       if (isFromLead) {
@@ -1032,24 +1037,39 @@ export default function CreateQuotationScreen({
     const list = [...cachedSalesExecutives];
     if (
       selectedSalesExecutiveItem &&
+      selectedSalesExecutiveItem.id !== null &&
       !list.some((se) => se.id === selectedSalesExecutiveItem.id)
     ) {
       list.unshift(selectedSalesExecutiveItem);
     }
 
-    setPickerConfig({
-      title: "Select Sales Executive",
-      items: list.map((se) => ({
+    const pickerItems: {
+      id: number | string | null;
+      label: string;
+      subLabel?: string;
+    }[] = [
+      { id: null, label: "-- None --", subLabel: "Clear / No Sales Executive" },
+      ...list.map((se) => ({
         id: se.id,
         label: cleanSalesExecutiveName(se.label),
         subLabel: undefined,
       })),
+    ];
+
+    setPickerConfig({
+      title: "Select Sales Executive",
+      items: pickerItems,
       selectedId: selectedSalesExecutiveItem?.id ?? null,
       onSelect: (item) => {
-        const found = list.find((se) => se.id === item.id) || null;
-        setSelectedSalesExecutiveItem(found);
-        if (found) {
-          dispatch(setSelectedSalesExecutive(found));
+        if (item.id === null) {
+          setSelectedSalesExecutiveItem(null);
+          dispatch(setSelectedSalesExecutive(null));
+        } else {
+          const found = list.find((se) => se.id === item.id) || null;
+          setSelectedSalesExecutiveItem(found);
+          if (found) {
+            dispatch(setSelectedSalesExecutive(found));
+          }
         }
       },
     });
@@ -1249,11 +1269,9 @@ export default function CreateQuotationScreen({
     const payload = {
       patron_id: Number(customerIdToSubmit),
       site_id: Number(siteIdToSubmit),
-      sales_executive_id: selectedSalesExecutiveItem
+      sales_executive_id: selectedSalesExecutiveItem?.id
         ? Number(selectedSalesExecutiveItem.id)
-        : cachedSalesExecutives.length > 0
-          ? Number(cachedSalesExecutives[0].id)
-          : null,
+        : null,
       quote_date: getTodayDateString(),
       validity_date: validityDate,
       is_tax_inclusive: isTaxInclusive,
@@ -1422,6 +1440,13 @@ export default function CreateQuotationScreen({
                       </Text>
                     </Text>
                   ) : null}
+                  <View style={styles.leadLockedInfoPill}>
+                    <Ionicons name="lock-closed" size={12} color="#0D9488" />
+                    <Text style={styles.leadLockedInfoText}>
+                      Lead mode: Mandatory fields are locked. You can edit Sales
+                      Executive and Notes.
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -1442,9 +1467,13 @@ export default function CreateQuotationScreen({
               ) : null}
             </View>
             <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={openCustomerPicker}
-              activeOpacity={0.75}
+              style={[
+                styles.dropdownButton,
+                isFromLead && styles.disabledField,
+              ]}
+              onPress={isFromLead ? undefined : openCustomerPicker}
+              disabled={isFromLead}
+              activeOpacity={isFromLead ? 1 : 0.75}
             >
               <Text
                 style={[
@@ -1452,6 +1481,7 @@ export default function CreateQuotationScreen({
                   !selectedCustomerItem?.legal_name &&
                     !params.customerName &&
                     styles.dropdownPlaceholder,
+                  isFromLead && styles.disabledFieldText,
                 ]}
                 numberOfLines={1}
               >
@@ -1459,7 +1489,11 @@ export default function CreateQuotationScreen({
                   params.customerName ||
                   "Select Customer"}
               </Text>
-              <Ionicons name="chevron-down" size={18} color="#64748B" />
+              {isFromLead ? (
+                <Ionicons name="lock-closed" size={16} color="#94A3B8" />
+              ) : (
+                <Ionicons name="chevron-down" size={18} color="#64748B" />
+              )}
             </TouchableOpacity>
           </View>
 
@@ -1478,9 +1512,13 @@ export default function CreateQuotationScreen({
               ) : null}
             </View>
             <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={openSitePicker}
-              activeOpacity={0.75}
+              style={[
+                styles.dropdownButton,
+                isFromLead && styles.disabledField,
+              ]}
+              onPress={isFromLead ? undefined : openSitePicker}
+              disabled={isFromLead}
+              activeOpacity={isFromLead ? 1 : 0.75}
             >
               <Text
                 style={[
@@ -1488,6 +1526,7 @@ export default function CreateQuotationScreen({
                   !selectedSiteItem?.name &&
                     !params.deliveryLocation &&
                     styles.dropdownPlaceholder,
+                  isFromLead && styles.disabledFieldText,
                 ]}
                 numberOfLines={1}
               >
@@ -1495,7 +1534,11 @@ export default function CreateQuotationScreen({
                   params.deliveryLocation ||
                   "Select Delivery Site"}
               </Text>
-              <Ionicons name="chevron-down" size={18} color="#64748B" />
+              {isFromLead ? (
+                <Ionicons name="lock-closed" size={16} color="#94A3B8" />
+              ) : (
+                <Ionicons name="chevron-down" size={18} color="#64748B" />
+              )}
             </TouchableOpacity>
           </View>
 
@@ -1530,12 +1573,22 @@ export default function CreateQuotationScreen({
               Validity Date <Text style={styles.requiredAsterisk}>*</Text>
             </Text>
             <TouchableOpacity
-              style={styles.datePickerBtn}
-              onPress={() => openCalendar("validity")}
-              activeOpacity={0.75}
+              style={[styles.datePickerBtn, isFromLead && styles.disabledField]}
+              onPress={isFromLead ? undefined : () => openCalendar("validity")}
+              disabled={isFromLead}
+              activeOpacity={isFromLead ? 1 : 0.75}
             >
-              <Ionicons name="calendar-outline" size={16} color="#2563EB" />
-              <Text style={styles.datePickerBtnText}>
+              <Ionicons
+                name={isFromLead ? "lock-closed" : "calendar-outline"}
+                size={16}
+                color={isFromLead ? "#94A3B8" : "#2563EB"}
+              />
+              <Text
+                style={[
+                  styles.datePickerBtnText,
+                  isFromLead && styles.disabledFieldText,
+                ]}
+              >
                 {formatDisplayDate(validityDate)}
               </Text>
             </TouchableOpacity>
@@ -1559,7 +1612,7 @@ export default function CreateQuotationScreen({
                     {item.mix_design_name || "Concrete Product"}
                   </Text>
 
-                  {items.length > 1 && (
+                  {items.length > 1 && !isFromLead && (
                     <TouchableOpacity
                       style={styles.deleteProductBtn}
                       onPress={() => handleRemoveItem(index)}
@@ -1608,9 +1661,13 @@ export default function CreateQuotationScreen({
                       <Text style={styles.requiredAsterisk}>*</Text>
                     </Text>
                     <TextInput
-                      style={styles.textInput}
+                      style={[
+                        styles.textInput,
+                        isFromLead && styles.disabledInput,
+                      ]}
                       keyboardType="decimal-pad"
                       value={item.quantity}
+                      editable={!isFromLead}
                       onChangeText={(val) =>
                         handleUpdateItem(index, "quantity", val)
                       }
@@ -1624,9 +1681,13 @@ export default function CreateQuotationScreen({
                       Rate in ₹ <Text style={styles.requiredAsterisk}>*</Text>
                     </Text>
                     <TextInput
-                      style={styles.textInput}
+                      style={[
+                        styles.textInput,
+                        isFromLead && styles.disabledInput,
+                      ]}
                       keyboardType="decimal-pad"
                       value={item.rate}
+                      editable={!isFromLead}
                       onChangeText={(val) =>
                         handleUpdateItem(index, "rate", val)
                       }
@@ -1640,14 +1701,30 @@ export default function CreateQuotationScreen({
                 <View style={styles.itemFieldGroup}>
                   <Text style={styles.label}>Sales tax</Text>
                   <TouchableOpacity
-                    style={styles.dropdownButton}
-                    onPress={() => openTaxPicker(index)}
-                    activeOpacity={0.75}
+                    style={[
+                      styles.dropdownButton,
+                      isFromLead && styles.disabledField,
+                    ]}
+                    onPress={
+                      isFromLead ? undefined : () => openTaxPicker(index)
+                    }
+                    disabled={isFromLead}
+                    activeOpacity={isFromLead ? 1 : 0.75}
                   >
-                    <Text style={styles.dropdownText} numberOfLines={1}>
+                    <Text
+                      style={[
+                        styles.dropdownText,
+                        isFromLead && styles.disabledFieldText,
+                      ]}
+                      numberOfLines={1}
+                    >
                       {item.tax_name || "GST 18%"}
                     </Text>
-                    <Ionicons name="chevron-down" size={18} color="#64748B" />
+                    {isFromLead ? (
+                      <Ionicons name="lock-closed" size={16} color="#94A3B8" />
+                    ) : (
+                      <Ionicons name="chevron-down" size={18} color="#64748B" />
+                    )}
                   </TouchableOpacity>
                 </View>
 
@@ -1684,21 +1761,24 @@ export default function CreateQuotationScreen({
           })}
 
           {/* ADD ANOTHER PRODUCT BUTTON */}
-          <TouchableOpacity
-            style={styles.addProductButton}
-            onPress={handleAddItem}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="add-circle-outline" size={18} color="#2563EB" />
-            <Text style={styles.addProductButtonText}>
-              + Add another product
-            </Text>
-          </TouchableOpacity>
+          {!isFromLead && (
+            <TouchableOpacity
+              style={styles.addProductButton}
+              onPress={handleAddItem}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#2563EB" />
+              <Text style={styles.addProductButtonText}>
+                + Add another product
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* 5. TAX INCLUSIVE RATE TOGGLE (MATCHES REFERENCE IMAGE) */}
           <TouchableOpacity
-            style={styles.taxInclusiveBox}
-            onPress={toggleTaxInclusive}
+            style={[styles.taxInclusiveBox, isFromLead && { opacity: 0.6 }]}
+            onPress={isFromLead ? undefined : toggleTaxInclusive}
+            disabled={isFromLead}
             activeOpacity={0.8}
           >
             <View
@@ -1762,7 +1842,7 @@ export default function CreateQuotationScreen({
             {isSubmitting ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveDraftButtonText}>Save draft</Text>
+              <Text style={styles.saveDraftButtonText}>Create Quotation</Text>
             )}
           </TouchableOpacity>
 
@@ -2020,6 +2100,37 @@ export default function CreateQuotationScreen({
 }
 
 const styles = StyleSheet.create({
+  disabledField: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#CBD5E1",
+  },
+  disabledFieldText: {
+    color: "#64748B",
+  },
+  disabledInput: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#CBD5E1",
+    color: "#475569",
+  },
+  leadLockedInfoPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#F0FDFA",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+    marginTop: 6,
+  },
+  leadLockedInfoText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#0F766E",
+    flex: 1,
+  },
+
   safeArea: {
     flex: 1,
     backgroundColor: "#0B2A4A",

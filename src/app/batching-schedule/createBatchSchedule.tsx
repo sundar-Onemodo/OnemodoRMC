@@ -567,23 +567,7 @@ export default function CreateBatchScheduleScreen() {
       setSelectedPumpType(resolvePumpTypeFromOrder(rawOrderPump));
     }
 
-    // Autofill Schedule Date & Timings if scheduled_start exists
-    if (order.scheduled_start) {
-      try {
-        const cleanDate = order.scheduled_start.split("T")[0];
-        if (cleanDate && cleanDate.length === 10) {
-          setScheduleDate(cleanDate);
-        }
-        const d = new Date(order.scheduled_start);
-        if (!isNaN(d.getTime())) {
-          setBatchingDateTime(d);
-          const dispatchD = new Date(d.getTime() + 30 * 60 * 1000);
-          setDispatchDateTime(dispatchD);
-        }
-      } catch {
-        // keep defaults
-      }
-    }
+    // Schedule Date should always default to the current date and not be overwritten with historical order timestamps.
   };
 
   // Keep Site and Mix Design strictly bound to the selected Sales Order (read-only)
@@ -1051,14 +1035,15 @@ export default function CreateBatchScheduleScreen() {
                 <TouchableOpacity
                   style={styles.datePickerButton}
                   onPress={() => {
-                    setSchedMonth(
-                      new Date(scheduleDate).getMonth() ||
-                        new Date().getMonth(),
-                    );
-                    setSchedYear(
-                      new Date(scheduleDate).getFullYear() ||
-                        new Date().getFullYear(),
-                    );
+                    const parts = scheduleDate.split("-").map(Number);
+                    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                      setSchedYear(parts[0]);
+                      setSchedMonth(parts[1] - 1);
+                    } else {
+                      const now = new Date();
+                      setSchedMonth(now.getMonth());
+                      setSchedYear(now.getFullYear());
+                    }
                     setScheduleDatePickerVisible(true);
                   }}
                   activeOpacity={0.75}
@@ -1613,8 +1598,15 @@ export default function CreateBatchScheduleScreen() {
                 onPress={() => {
                   const todayStr = getTodayDateString();
                   setScheduleDate(todayStr);
-                  setSchedMonth(new Date().getMonth());
-                  setSchedYear(new Date().getFullYear());
+                  const now = new Date();
+                  setSchedMonth(now.getMonth());
+                  setSchedYear(now.getFullYear());
+                  const newBatch = new Date(batchingDateTime.getTime());
+                  newBatch.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
+                  setBatchingDateTime(newBatch);
+                  const newDispatch = new Date(dispatchDateTime.getTime());
+                  newDispatch.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
+                  setDispatchDateTime(newDispatch);
                   setScheduleDatePickerVisible(false);
                 }}
               >
@@ -1629,6 +1621,12 @@ export default function CreateBatchScheduleScreen() {
                   tom.setDate(tom.getDate() + 1);
                   setSchedMonth(tom.getMonth());
                   setSchedYear(tom.getFullYear());
+                  const newBatch = new Date(batchingDateTime.getTime());
+                  newBatch.setFullYear(tom.getFullYear(), tom.getMonth(), tom.getDate());
+                  setBatchingDateTime(newBatch);
+                  const newDispatch = new Date(dispatchDateTime.getTime());
+                  newDispatch.setFullYear(tom.getFullYear(), tom.getMonth(), tom.getDate());
+                  setDispatchDateTime(newDispatch);
                   setScheduleDatePickerVisible(false);
                 }}
               >
@@ -1643,6 +1641,12 @@ export default function CreateBatchScheduleScreen() {
                   d2.setDate(d2.getDate() + 2);
                   setSchedMonth(d2.getMonth());
                   setSchedYear(d2.getFullYear());
+                  const newBatch = new Date(batchingDateTime.getTime());
+                  newBatch.setFullYear(d2.getFullYear(), d2.getMonth(), d2.getDate());
+                  setBatchingDateTime(newBatch);
+                  const newDispatch = new Date(dispatchDateTime.getTime());
+                  newDispatch.setFullYear(d2.getFullYear(), d2.getMonth(), d2.getDate());
+                  setDispatchDateTime(newDispatch);
                   setScheduleDatePickerVisible(false);
                 }}
               >

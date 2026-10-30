@@ -51,6 +51,9 @@ export interface CustomerPOItem {
   customer_po_reference?: string | null;
   patron_id: number;
   site_id: number;
+  quotation_id?: number | null;
+  sales_executive_id?: number | null;
+  sales_executive?: any;
   order_date: string;
   status: number; // 0 = Draft, 1 = Confirmed, 2 = Completed
   is_tax_inclusive: boolean;
@@ -718,6 +721,7 @@ export default function CustomerPOScreen() {
                   pathname: "/customer-po/editCustomerPO" as any,
                   params: {
                     admin_po_id: String(item.id),
+                    quotation_id: item.quotation_id ? String(item.quotation_id) : "",
                   },
                 })
               }
@@ -1034,6 +1038,24 @@ export default function CustomerPOScreen() {
 }
 
 const styles = StyleSheet.create({
+  quoteLinkedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#F0FDFA",
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  quoteLinkedBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#0F766E",
+  },
+
   safeArea: {
     flex: 1,
     backgroundColor: "#0F172A",

@@ -1321,7 +1321,7 @@ export default function EditBatchScreen() {
       qty_m3: tripVal,
       order_volume_m3: orderVolVal,
       pump_type: selectedPumpType,
-      status: normalizeStatusForApi(selectedStatus),
+      status: "scheduled",
       notes: notes.trim() || "Requested by sales executive",
       dispatch_time: dispatchIso,
       batching_time: batchingIso,
@@ -1515,14 +1515,15 @@ export default function EditBatchScreen() {
                 <TouchableOpacity
                   style={styles.datePickerButton}
                   onPress={() => {
-                    setSchedMonth(
-                      new Date(scheduleDate).getMonth() ||
-                        new Date().getMonth(),
-                    );
-                    setSchedYear(
-                      new Date(scheduleDate).getFullYear() ||
-                        new Date().getFullYear(),
-                    );
+                    const parts = scheduleDate.split("-").map(Number);
+                    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                      setSchedYear(parts[0]);
+                      setSchedMonth(parts[1] - 1);
+                    } else {
+                      const now = new Date();
+                      setSchedMonth(now.getMonth());
+                      setSchedYear(now.getFullYear());
+                    }
                     setScheduleDatePickerVisible(true);
                   }}
                   activeOpacity={0.75}
@@ -1746,62 +1747,7 @@ export default function EditBatchScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* SECTION 6: STATUS SELECTOR */}
-              <View style={styles.sectionCard}>
-                <View style={styles.sectionHeader}>
-                  <MaterialCommunityIcons
-                    name="progress-clock"
-                    size={20}
-                    color="#2563EB"
-                  />
-                  <Text style={styles.sectionTitle}>
-                    Schedule Status <Text style={styles.asterisk}>*</Text>
-                  </Text>
-                </View>
-
-                <View style={styles.statusChipsGrid}>
-                  {STATUS_OPTIONS.map((opt) => {
-                    const isSelected = selectedStatus === opt.value;
-                    return (
-                      <TouchableOpacity
-                        key={opt.value}
-                        style={[
-                          styles.statusChip,
-                          { backgroundColor: isSelected ? opt.bg : "#F8FAFC" },
-                          isSelected && {
-                            borderColor: opt.color,
-                            borderWidth: 2,
-                          },
-                        ]}
-                        onPress={() => setSelectedStatus(opt.value)}
-                        activeOpacity={0.75}
-                      >
-                        <View
-                          style={[
-                            styles.statusDot,
-                            {
-                              backgroundColor: isSelected
-                                ? opt.color
-                                : "#94A3B8",
-                            },
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.statusChipLabel,
-                            { color: isSelected ? opt.color : "#64748B" },
-                            isSelected && { fontWeight: "800" },
-                          ]}
-                        >
-                          {opt.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* SECTION 7: SCHEDULE TIMINGS (FIXED NON-OVERFLOWING STACKED UI) */}
+              {/* SECTION 6: SCHEDULE TIMINGS (FIXED NON-OVERFLOWING STACKED UI) */}
               <View style={styles.sectionCard}>
                 <View style={styles.sectionHeader}>
                   <Ionicons name="time-outline" size={20} color="#2563EB" />
