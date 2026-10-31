@@ -1295,15 +1295,15 @@ export default function LeadScreen() {
           </TouchableOpacity>
           <View style={styles.headerTitleGroup}>
             <View style={styles.headerTitleBadgeRow}>
-              <Text style={styles.headerTitle}>Leads</Text>
+              <Text style={styles.headerTitle}>Lead</Text>
               <View style={styles.countBadge}>
                 <Text style={styles.countBadgeText}>{leads.length}</Text>
               </View>
             </View>
             <View style={styles.plantBadgeRow}>
-              <Ionicons name="business" size={12} color="#94A3B8" />
+              <Ionicons name="trending-up" size={12} color="#94A3B8" />
               <Text style={styles.plantBadgeText}>
-                {plant_name ? plant_name : "Ready-Mix Sales Pipeline"}
+                Sales Pipeline
               </Text>
             </View>
           </View>

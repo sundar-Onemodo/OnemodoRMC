@@ -64,7 +64,7 @@ export function AppHeader({
         ) : null}
         
         <Text style={[styles.title, { color: '#ffffff' }]} ellipsizeMode='tail' numberOfLines={1}>
-          {plant_name}
+          {title || plant_name || "RMC"}
         </Text>
       </View>
 
@@ -96,15 +96,17 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   leftContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    marginRight: Spacing.two,
   },
   title: {
     fontSize: 20,
     fontWeight: '700',
     fontFamily: 'System',
-    width:200
+    flexShrink: 1,
   },
   rightContainer: {
     flexDirection: 'row',

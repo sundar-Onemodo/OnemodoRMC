@@ -1186,77 +1186,9 @@ export default function CreateSalesOrderScreen() {
                   </View>
                 </View>
 
-                {/* Tax Option (Radio Buttons) & Tax Rate */}
+                {/* Sales Tax Dropdown */}
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Tax Calculation Type</Text>
-                  <View style={styles.radioPairRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.radioOptionCard,
-                        !isTaxInclusive && styles.radioOptionCardSelected,
-                      ]}
-                      onPress={() => setIsTaxInclusive(false)}
-                      activeOpacity={0.8}
-                    >
-                      <View
-                        style={[
-                          styles.radioCircle,
-                          !isTaxInclusive && styles.radioCircleSelected,
-                        ]}
-                      >
-                        {!isTaxInclusive && <View style={styles.radioDot} />}
-                      </View>
-                      <View style={{ marginLeft: 8 }}>
-                        <Text
-                          style={[
-                            styles.radioOptionLabel,
-                            !isTaxInclusive && styles.radioOptionLabelSelected,
-                          ]}
-                        >
-                          Tax Exclusive
-                        </Text>
-                        <Text style={styles.radioOptionSub}>
-                          Tax added on top of rate
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.radioOptionCard,
-                        isTaxInclusive && styles.radioOptionCardSelected,
-                      ]}
-                      onPress={() => setIsTaxInclusive(true)}
-                      activeOpacity={0.8}
-                    >
-                      <View
-                        style={[
-                          styles.radioCircle,
-                          isTaxInclusive && styles.radioCircleSelected,
-                        ]}
-                      >
-                        {isTaxInclusive && <View style={styles.radioDot} />}
-                      </View>
-                      <View style={{ marginLeft: 8 }}>
-                        <Text
-                          style={[
-                            styles.radioOptionLabel,
-                            isTaxInclusive && styles.radioOptionLabelSelected,
-                          ]}
-                        >
-                          Tax Inclusive
-                        </Text>
-                        <Text style={styles.radioOptionSub}>
-                          Rate already includes tax
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Tax Selector */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Tax Rate / Scheme</Text>
+                  <Text style={styles.fieldLabel}>Sales Tax</Text>
                   <TouchableOpacity
                     style={styles.pickerSelector}
                     onPress={() => openPicker('tax')}
@@ -1282,6 +1214,25 @@ export default function CreateSalesOrderScreen() {
                     />
                   </TouchableOpacity>
                 </View>
+
+                {/* Tax Inclusive Rate Checkbox (matches createQuotationScreen) */}
+                <TouchableOpacity
+                  style={styles.taxInclusiveBox}
+                  onPress={() => setIsTaxInclusive(!isTaxInclusive)}
+                  activeOpacity={0.8}
+                >
+                  <View
+                    style={[
+                      styles.checkboxBox,
+                      isTaxInclusive && styles.checkboxBoxChecked,
+                    ]}
+                  >
+                    {isTaxInclusive && (
+                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                    )}
+                  </View>
+                  <Text style={styles.taxInclusiveText}>Tax inclusive rate</Text>
+                </TouchableOpacity>
               </View>
 
               {/* SECTION 3: PUMP SPECIFICATION */}
@@ -2278,6 +2229,37 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  // Tax Inclusive Checkbox Box (Matches createQuotationScreen)
+  taxInclusiveBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 6,
+    marginBottom: 16,
+    gap: 10,
+  },
+  checkboxBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#64748B',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxBoxChecked: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  taxInclusiveText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
   // RADIO BUTTONS
   radioPairRow: {
     flexDirection: 'row',

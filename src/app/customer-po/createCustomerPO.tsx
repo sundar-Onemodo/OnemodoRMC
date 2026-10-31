@@ -21,7 +21,6 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -739,21 +738,24 @@ export default function CreateCustomerPOScreen() {
                 </View>
               </View>
 
-              {/* Tax Inclusive Switch */}
-              <View style={[styles.switchRow, { marginTop: 14 }]}>
-                <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={styles.switchTitle}>Tax Inclusive Pricing</Text>
-                  <Text style={styles.switchSubtitle}>
-                    Item rate includes applicable GST/Taxes
-                  </Text>
+              {/* Tax Inclusive Rate (Matches Quotation Screen UI) */}
+              <TouchableOpacity
+                style={[styles.taxInclusiveBox, { marginTop: 14 }]}
+                onPress={() => setIsTaxInclusive((prev) => !prev)}
+                activeOpacity={0.8}
+              >
+                <View
+                  style={[
+                    styles.checkboxBox,
+                    isTaxInclusive && styles.checkboxBoxChecked,
+                  ]}
+                >
+                  {isTaxInclusive && (
+                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                  )}
                 </View>
-                <Switch
-                  value={isTaxInclusive}
-                  onValueChange={setIsTaxInclusive}
-                  trackColor={{ false: "#CBD5E1", true: "#93C5FD" }}
-                  thumbColor={isTaxInclusive ? "#2563EB" : "#F8FAFC"}
-                />
-              </View>
+                <Text style={styles.taxInclusiveText}>Tax inclusive rate</Text>
+              </TouchableOpacity>
             </View>
 
             {/* SECTION 3: LINE ITEMS */}
@@ -917,7 +919,44 @@ export default function CreateCustomerPOScreen() {
                 </View>
               ))}
 
-              {/* Order Totals Summary */}
+              {/* Notes & Remarks (Shown in Order Items & Mix Spec space) */}
+              <View style={{ marginTop: 14 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 8,
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name="note-text-outline"
+                    size={17}
+                    color="#64748B"
+                  />
+                  <Text style={styles.fieldLabel}>NOTES & REMARKS</Text>
+                </View>
+                <View style={styles.textAreaContainer}>
+                  <TextInput
+                    style={styles.textArea}
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder="Enter any special instructions or remarks..."
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* SECTION 4: ORDER TOTALS SUMMARY (TOTAL PO VALUE SHOWN IN LAST) */}
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="receipt-outline" size={19} color="#2563EB" />
+                <Text style={styles.sectionTitle}>Total PO Value Summary</Text>
+              </View>
+
               <View style={styles.totalsBox}>
                 <View style={styles.totalsRow}>
                   <Text style={styles.totalsLabel}>Total Volume:</Text>
@@ -941,30 +980,6 @@ export default function CreateCustomerPOScreen() {
                     ₹{totals.finalTotal.toLocaleString("en-IN")}
                   </Text>
                 </View>
-              </View>
-            </View>
-
-            {/* SECTION 4: NOTES */}
-            <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
-                <MaterialCommunityIcons
-                  name="note-text-outline"
-                  size={19}
-                  color="#64748B"
-                />
-                <Text style={styles.sectionTitle}>Notes & Remarks</Text>
-              </View>
-
-              <View style={styles.textAreaContainer}>
-                <TextInput
-                  style={styles.textArea}
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Enter any special instructions or remarks..."
-                  placeholderTextColor="#94A3B8"
-                  multiline
-                  numberOfLines={3}
-                />
               </View>
             </View>
 
@@ -1344,25 +1359,33 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#2563EB",
   },
-  switchRow: {
+  taxInclusiveBox: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#EFF6FF",
     borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
   },
-  switchTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0F172A",
+  checkboxBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: "#64748B",
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  switchSubtitle: {
-    fontSize: 12,
-    color: "#64748B",
-    marginTop: 2,
+  checkboxBoxChecked: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
+  },
+  taxInclusiveText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#2563EB",
   },
   addItemBtn: {
     flexDirection: "row",

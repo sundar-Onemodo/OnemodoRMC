@@ -1663,17 +1663,21 @@ export default function EditSalesOrderScreen() {
     return found?.label || `Status ${selectedStatus}`;
   }, [availableStatusOptions, selectedStatus]);
 
+  const currentStatusObj = useMemo(() => {
+    return (
+      availableStatusOptions.find(
+        (s) => Number(s.value) === Number(selectedStatus),
+      ) || availableStatusOptions[0]
+    );
+  }, [availableStatusOptions, selectedStatus]);
+
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]}
       edges={['top']}
     >
       <AppHeader
-        title={
-          orderHeaderInfo.fullNumber
-            ? `Edit ${orderHeaderInfo.fullNumber}`
-            : 'Edit Sales Order'
-        }
+        title="Edit Sales Order"
         onBackPress={handleBack}
         showNotification={false}
       />
@@ -1695,101 +1699,75 @@ export default function EditSalesOrderScreen() {
             </View>
           ) : (
             <>
-              {/* SECTION 0: ORDER STATUS SELECTION (RADIO BUTTONS) */}
-              <View style={[styles.card, styles.statusCard]}>
+              {/* SECTION 0: ORDER STATUS DROPDOWN */}
+              <View style={styles.card}>
                 <View style={styles.cardHeader}>
                   <MaterialIcons
-                    name="radio-button-checked"
+                    name="swap-horiz"
                     size={20}
                     color="#2563EB"
                   />
                   <Text style={styles.cardTitle}>Sales Order Status</Text>
                 </View>
 
-                <Text style={styles.statusHelperText}>
-                  Select updated status for this sales order:
-                </Text>
-
-                <View style={styles.radioGrid}>
-                  {availableStatusOptions.map((opt) => {
-                    const isSelected =
-                      Number(selectedStatus) === Number(opt.value);
-                    return (
-                      <TouchableOpacity
-                        key={String(opt.value)}
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>
+                    Order Status <Text style={styles.requiredStar}>*</Text>
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.pickerSelector}
+                    onPress={() => openPicker('status')}
+                    activeOpacity={0.75}
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      {currentStatusObj && (
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: currentStatusObj.color,
+                          }}
+                        />
+                      )}
+                      <Text
                         style={[
-                          styles.radioStatusCard,
-                          isSelected && {
-                            borderColor: opt.color,
-                            backgroundColor: opt.bgColor,
+                          styles.pickerSelectorText,
+                          currentStatusObj && {
+                            color: currentStatusObj.color,
+                            fontWeight: '700',
                           },
                         ]}
-                        onPress={() => handleStatusChange(Number(opt.value))}
-                        activeOpacity={0.8}
+                        numberOfLines={1}
                       >
-                        <View
-                          style={[
-                            styles.radioCircle,
-                            isSelected && { borderColor: opt.color },
-                          ]}
-                        >
-                          {isSelected && (
-                            <View
-                              style={[
-                                styles.radioDot,
-                                { backgroundColor: opt.color },
-                              ]}
-                            />
-                          )}
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 10 }}>
-                          <Text
-                            style={[
-                              styles.radioStatusLabel,
-                              isSelected && {
-                                color: opt.color,
-                                fontWeight: '700',
-                              },
-                            ]}
-                          >
-                            {opt.label}
-                          </Text>
-                          {opt.description ? (
-                            <Text style={styles.radioStatusDesc}>
-                              {opt.description}
-                            </Text>
-                          ) : null}
-                        </View>
-                        <View
-                          style={[
-                            styles.statusBadgePill,
-                            {
-                              backgroundColor: opt.bgColor,
-                              borderColor: opt.color + '44',
-                            },
-                          ]}
-                        >
-                          <View
-                            style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: 3,
-                              backgroundColor: opt.color,
-                              marginRight: 5,
-                            }}
-                          />
-                          <Text
-                            style={[
-                              styles.statusBadgePillText,
-                              { color: opt.color },
-                            ]}
-                          >
-                            {opt.label}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
+                        {currentStatusObj
+                          ? currentStatusObj.label
+                          : 'Select Status'}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-down"
+                      size={18}
+                      color="#64748B"
+                    />
+                  </TouchableOpacity>
+                  {currentStatusObj?.description ? (
+                    <Text
+                      style={[
+                        styles.statusHelperText,
+                        { marginTop: 4, marginBottom: 0 },
+                      ]}
+                    >
+                      {currentStatusObj.description}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
 
@@ -1948,77 +1926,9 @@ export default function EditSalesOrderScreen() {
                   </View>
                 </View>
 
-                {/* Tax Option (Radio Buttons) & Tax Rate */}
+                {/* Sales Tax Dropdown */}
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Tax Calculation Type</Text>
-                  <View style={styles.radioPairRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.radioOptionCard,
-                        !isTaxInclusive && styles.radioOptionCardSelected,
-                      ]}
-                      onPress={() => setIsTaxInclusive(false)}
-                      activeOpacity={0.8}
-                    >
-                      <View
-                        style={[
-                          styles.radioCircle,
-                          !isTaxInclusive && styles.radioCircleSelected,
-                        ]}
-                      >
-                        {!isTaxInclusive && <View style={styles.radioDot} />}
-                      </View>
-                      <View style={{ marginLeft: 8 }}>
-                        <Text
-                          style={[
-                            styles.radioOptionLabel,
-                            !isTaxInclusive && styles.radioOptionLabelSelected,
-                          ]}
-                        >
-                          Tax Exclusive
-                        </Text>
-                        <Text style={styles.radioOptionSub}>
-                          Tax added on top of rate
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.radioOptionCard,
-                        isTaxInclusive && styles.radioOptionCardSelected,
-                      ]}
-                      onPress={() => setIsTaxInclusive(true)}
-                      activeOpacity={0.8}
-                    >
-                      <View
-                        style={[
-                          styles.radioCircle,
-                          isTaxInclusive && styles.radioCircleSelected,
-                        ]}
-                      >
-                        {isTaxInclusive && <View style={styles.radioDot} />}
-                      </View>
-                      <View style={{ marginLeft: 8 }}>
-                        <Text
-                          style={[
-                            styles.radioOptionLabel,
-                            isTaxInclusive && styles.radioOptionLabelSelected,
-                          ]}
-                        >
-                          Tax Inclusive
-                        </Text>
-                        <Text style={styles.radioOptionSub}>
-                          Rate already includes tax
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Tax Selector */}
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Tax Rate / Scheme</Text>
+                  <Text style={styles.fieldLabel}>Sales Tax</Text>
                   <TouchableOpacity
                     style={styles.pickerSelector}
                     onPress={() => openPicker('tax')}
@@ -2044,6 +1954,25 @@ export default function EditSalesOrderScreen() {
                     />
                   </TouchableOpacity>
                 </View>
+
+                {/* Tax Inclusive Rate Checkbox (matches createQuotationScreen) */}
+                <TouchableOpacity
+                  style={styles.taxInclusiveBox}
+                  onPress={() => setIsTaxInclusive(!isTaxInclusive)}
+                  activeOpacity={0.8}
+                >
+                  <View
+                    style={[
+                      styles.checkboxBox,
+                      isTaxInclusive && styles.checkboxBoxChecked,
+                    ]}
+                  >
+                    {isTaxInclusive && (
+                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                    )}
+                  </View>
+                  <Text style={styles.taxInclusiveText}>Tax inclusive rate</Text>
+                </TouchableOpacity>
               </View>
 
               {/* SECTION 3: PUMP SPECIFICATION */}
@@ -2819,6 +2748,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  // Tax Inclusive Checkbox Box (Matches createQuotationScreen)
+  taxInclusiveBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 6,
+    marginBottom: 16,
+    gap: 10,
+  },
+  checkboxBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#64748B',
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxBoxChecked: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  taxInclusiveText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
   // Radio Pair for Tax
   radioPairRow: {
     flexDirection: 'row',

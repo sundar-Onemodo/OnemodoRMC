@@ -13,6 +13,7 @@ import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   FlatList,
   Platform,
@@ -201,7 +202,7 @@ export default function SalesOrderScreen() {
     useCallback(() => {
       StatusBar.setBarStyle("light-content");
       if (Platform.OS === "android") {
-        StatusBar.setBackgroundColor("#0F172A");
+        StatusBar.setBackgroundColor("#0B2A4A");
       }
 
       const onBackPress = () => {
@@ -399,13 +400,42 @@ export default function SalesOrderScreen() {
     }, [counts]);
 
   // Check if an order is editable according to requirements:
-  // "if the user change the status to inprogress in the listshowing on that notg to show edit button we the status is 1 or 0 means they can allow to edit"
-  // "if the status change to cancel (4) show edit button on the list when user selected cancel then want to edit that time the status should need to show Schedule,Inprogress"
-  const canEditOrder = (status: number) => {
-    return status === 0 || status === 1 || status === 4;
+  // "when status is in schedule , inprogress, cancel they edit but if inprogress the ordered & remaining value are equal they can edit but if not equal can't show edit button"
+  const canEditOrder = (
+    status: number | string | null | undefined,
+    orderedM3?: number | string | null,
+    remainingM3?: number | string | null,
+  ) => {
+    const s = Number(status);
+    if (s === 0 || s === 1 || s === 4) {
+      return true;
+    }
+    if (s === 2) {
+      // In Progress: can edit ONLY if ordered & remaining values are equal (no deliveries made yet)
+      const ord = parseFloat(String(orderedM3 ?? 0));
+      const rem = parseFloat(String(remainingM3 ?? 0));
+      return !isNaN(ord) && !isNaN(rem) && Math.abs(ord - rem) < 0.001;
+    }
+    return false;
   };
 
   const handleEditPress = (order: SalesOrderItem) => {
+    const orderedM3 =
+      order.progress?.ordered_m3 ?? Number(order.total_qty ?? 0);
+    const deliveredM3 =
+      order.progress?.delivered_m3 ?? Number(order.produced_qty ?? 0);
+    const remainingM3 =
+      order.progress?.remaining_delivery_m3 ??
+      Math.max(0, orderedM3 - deliveredM3);
+
+    if (!canEditOrder(order.status, orderedM3, remainingM3)) {
+      Alert.alert(
+        "Cannot Edit Order",
+        "This in-progress order has already delivered concrete and cannot be edited.",
+      );
+      return;
+    }
+
     router.push({
       pathname: "/sales-order/editSalesOrderScreen" as any,
       params: {
@@ -415,7 +445,7 @@ export default function SalesOrderScreen() {
     });
   };
 
-  // Render Single Order Card
+  // Render Single Order Card with Upgraded Modern Design
   const renderOrderItem = ({ item }: { item: SalesOrderItem }) => {
     const statusMeta = getSalesOrderStatusMeta(item.status, salesOrderStatuses);
 
@@ -439,6 +469,12 @@ export default function SalesOrderScreen() {
       (item.prefix && item.order_no
         ? `${item.prefix}${item.order_no}`
         : item.order_no || `SO #${item.id}`);
+
+    const poRef =
+      item.customer_p_o?.reference ||
+      (item as any).customer_po_reference ||
+      (item.customer_po_id ? `PO #${item.customer_po_id}` : null);
+
     const customerName =
       item.customer?.legal_name ||
       item.customer?.name ||
@@ -449,33 +485,30 @@ export default function SalesOrderScreen() {
       item.mix_design?.name ||
       "Mix Not Specified";
 
-    const showEditBtn = canEditOrder(item.status);
+    const showEditBtn = canEditOrder(item.status, orderedM3, remainingM3);
 
     return (
-      <View
-        style={[
-          styles.orderCard,
-          {
-            backgroundColor: colors.surfaceContainerLow,
-            borderColor: colors.outlineVariant + "2E",
-          },
-        ]}
-      >
-        {/* Card Header: Full Number, Status */}
+      <View style={styles.orderCard}>
+        {/* Card Header: Order Number Badge & Status Pill */}
         <View style={styles.cardHeader}>
-          <View style={styles.cardHeaderLeft}>
-            <View style={styles.orderNoRow}>
-              <View style={styles.orderIconWrap}>
-                <MaterialCommunityIcons
-                  name="file-document-outline"
-                  size={16}
-                  color="#2563EB"
-                />
-              </View>
-              <Text style={[styles.orderNoText, { color: colors.text }]}>
-                {displayFullNumber}
-              </Text>
+          <View style={styles.headerBadgesLeft}>
+            <View style={styles.orderNoBadge}>
+              <MaterialCommunityIcons
+                name="file-document-outline"
+                size={14}
+                color="#2563EB"
+              />
+              <Text style={styles.orderNoText}>{displayFullNumber}</Text>
             </View>
+
+            {poRef && (
+              <View style={styles.poRefBadge}>
+                <Ionicons name="receipt-outline" size={11} color="#64748B" />
+                <Text style={styles.poRefText} numberOfLines={1}>
+                  {poRef}
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Status Badge */}
@@ -488,11 +521,8 @@ export default function SalesOrderScreen() {
               },
             ]}
           >
-            <MaterialIcons
-              name={statusMeta.icon}
-              size={12}
-              color={statusMeta.color}
-              style={{ marginRight: 4 }}
+            <View
+              style={[styles.statusDot, { backgroundColor: statusMeta.color }]}
             />
             <Text style={[styles.statusText, { color: statusMeta.color }]}>
               {statusMeta.label}
@@ -500,85 +530,113 @@ export default function SalesOrderScreen() {
           </View>
         </View>
 
-        <View style={styles.cardDivider} />
-
-        {/* Customer & Site Details */}
-        <View style={styles.detailsBlock}>
-          {/* Customer */}
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconWrap}>
-              <MaterialCommunityIcons name="domain" size={16} color="#64748B" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Customer</Text>
-              <Text
-                style={[styles.infoValueBold, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {customerName}
-              </Text>
-            </View>
-          </View>
-
-          {/* Site */}
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconWrap}>
-              <MaterialIcons name="place" size={16} color="#0284C7" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Site</Text>
-              <Text
-                style={[styles.infoValue, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {siteName}
-              </Text>
-            </View>
-          </View>
-
-          {/* Mix Design */}
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconWrap}>
-              <MaterialCommunityIcons
-                name="flask-outline"
-                size={16}
-                color="#7C3AED"
-              />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Mix Design</Text>
-              <Text
-                style={[styles.infoValueBold, { color: "#7C3AED" }]}
-                numberOfLines={1}
-              >
-                {mixName}
-              </Text>
-            </View>
-            {item.rate ? (
-              <View style={styles.ratePill}>
-                <Text style={styles.ratePillText}>
-                  {formatRate(item.rate)}/m³
-                </Text>
-              </View>
-            ) : null}
+        {/* Customer & Site Location Block */}
+        <View style={styles.projectSection}>
+          <Text style={styles.customerNameText} numberOfLines={2}>
+            {customerName}
+          </Text>
+          <View style={styles.siteRow}>
+            <Ionicons name="location" size={13} color="#DC2626" />
+            <Text style={styles.siteNameText} numberOfLines={1}>
+              {siteName}
+            </Text>
           </View>
         </View>
 
-        {/* Progress Bar Section (Ordered vs Remaining Delivery) */}
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <View style={styles.progressHeaderLeft}>
+        {/* Modern 3-Column Spec Box: Mix Design, Ordered Qty, Delivered Qty */}
+        <View style={styles.specBox}>
+          {/* Col 1: MIX DESIGN */}
+          <View style={styles.specCol}>
+            <View style={styles.specHeaderRow}>
               <MaterialCommunityIcons
-                name="truck-delivery-outline"
-                size={16}
+                name="layers-triple-outline"
+                size={13}
                 color="#2563EB"
               />
-              <Text style={styles.progressTitle}>Fulfillment Progress</Text>
+              <Text style={styles.specLabel}>MIX DESIGN</Text>
             </View>
-            <Text style={styles.progressPercentText}>{progressPercent}%</Text>
+            <Text style={styles.specValue} numberOfLines={1}>
+              {mixName}
+            </Text>
+            {item.rate ? (
+              <Text style={styles.specSubRate}>{formatRate(item.rate)}/m³</Text>
+            ) : null}
           </View>
 
-          {/* Progress Bar Track & Fill */}
+          <View style={styles.specDivider} />
+
+          {/* Col 2: ORDERED QTY */}
+          <View style={styles.specCol}>
+            <View style={styles.specHeaderRow}>
+              <MaterialCommunityIcons
+                name="cube-outline"
+                size={13}
+                color="#2563EB"
+              />
+              <Text style={styles.specLabel}>ORDERED</Text>
+            </View>
+            <Text
+              style={[
+                styles.specValue,
+                { color: "#2563EB", fontWeight: "800" },
+              ]}
+            >
+              {formatVolume(orderedM3)} m³
+            </Text>
+          </View>
+
+          <View style={styles.specDivider} />
+
+          {/* Col 3: DELIVERED */}
+          <View style={styles.specCol}>
+            <View style={styles.specHeaderRow}>
+              <MaterialCommunityIcons
+                name="truck-check-outline"
+                size={13}
+                color="#059669"
+              />
+              <Text style={styles.specLabel}>DELIVERED</Text>
+            </View>
+            <Text
+              style={[
+                styles.specValue,
+                { color: "#059669", fontWeight: "800" },
+              ]}
+            >
+              {formatVolume(deliveredM3)} m³
+            </Text>
+          </View>
+        </View>
+
+        {/* Fulfillment Progress Bar Section */}
+        <View style={styles.progressCardSection}>
+          <View style={styles.progressHeaderRow}>
+            <View style={styles.progressTitleRow}>
+              <MaterialCommunityIcons
+                name="truck-delivery-outline"
+                size={15}
+                color="#2563EB"
+              />
+              <Text style={styles.progressTitleText}>Fulfillment Progress</Text>
+            </View>
+            <Text
+              style={[
+                styles.progressPercentText,
+                {
+                  color:
+                    progressPercent >= 100
+                      ? "#059669"
+                      : progressPercent > 0
+                        ? "#2563EB"
+                        : "#64748B",
+                },
+              ]}
+            >
+              {progressPercent}%
+            </Text>
+          </View>
+
+          {/* Modern Slim Track */}
           <View style={styles.progressBarTrack}>
             <View
               style={[
@@ -596,70 +654,52 @@ export default function SalesOrderScreen() {
             />
           </View>
 
-          {/* Metric Columns: Ordered, Remaining, Delivered */}
-          <View style={styles.progressMetricsRow}>
-            <View style={styles.metricCol}>
-              <Text style={styles.metricLabel}>Ordered</Text>
-              <Text style={styles.metricValuePrimary}>
-                {formatVolume(orderedM3)} m³
-              </Text>
-            </View>
-            <View style={styles.metricColDivider} />
-            <View style={styles.metricCol}>
-              <Text style={styles.metricLabel}>Remaining</Text>
+          {/* Real-time Remaining Notice */}
+          <View style={styles.remainingNoticeRow}>
+            <Text style={styles.remainingLabel}>
+              Remaining to pour:{" "}
               <Text
-                style={[
-                  styles.metricValue,
-                  { color: remainingM3 > 0 ? "#D97706" : "#059669" },
-                ]}
+                style={{
+                  fontWeight: "700",
+                  color: remainingM3 > 0 ? "#D97706" : "#059669",
+                }}
               >
                 {formatVolume(remainingM3)} m³
               </Text>
-            </View>
-            <View style={styles.metricColDivider} />
-            <View style={styles.metricCol}>
-              <Text style={styles.metricLabel}>Delivered</Text>
-              <Text
-                style={[
-                  styles.metricValue,
-                  { color: deliveredM3 > 0 ? "#059669" : "#64748B" },
-                ]}
-              >
-                {formatVolume(deliveredM3)} m³
-              </Text>
-            </View>
+            </Text>
           </View>
         </View>
 
-        {/* Card Footer with Edit Action */}
+        {/* Card Footer: Metadata chips & Edit Action */}
         <View style={styles.cardFooter}>
           <View style={styles.metaRow}>
             {item.concrete_pump ? (
-              <View style={styles.pumpBadge}>
-                <MaterialCommunityIcons name="pump" size={12} color="#475569" />
-                <Text style={styles.pumpBadgeText}>
-                  {item.concrete_pump.replace(/_/g, " ")}
+              <View style={styles.metaChip}>
+                <MaterialCommunityIcons name="pump" size={12} color="#2563EB" />
+                <Text style={styles.metaChipText}>
+                  {String(item.concrete_pump).replace(/_/g, " ")}
                 </Text>
               </View>
             ) : null}
             {item.is_tax_inclusive !== undefined ? (
-              <View style={styles.taxBadge}>
-                <Text style={styles.taxBadgeText}>
+              <View style={styles.metaChip}>
+                <Ionicons name="shield-outline" size={11} color="#64748B" />
+                <Text style={styles.metaChipText}>
                   {item.is_tax_inclusive ? "Tax Inclusive" : "Tax Exclusive"}
                 </Text>
               </View>
             ) : null}
           </View>
 
-          {/* Edit Button: Visible ONLY if status is 0, 1, or 4 */}
+          {/* Edit Button */}
           {showEditBtn && (
             <TouchableOpacity
-              style={styles.editButton}
+              style={styles.actionEditBtn}
               onPress={() => handleEditPress(item)}
-              activeOpacity={0.8}
+              activeOpacity={0.75}
             >
-              <Ionicons name="create-outline" size={15} color="#2563EB" />
-              <Text style={styles.editButtonText}>Edit</Text>
+              <Ionicons name="create-outline" size={14} color="#2563EB" />
+              <Text style={styles.actionEditText}>Edit</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -668,117 +708,148 @@ export default function SalesOrderScreen() {
   };
 
   return (
-    <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: colors.headerBgColor }]}
-      edges={["top"]}
-    >
-      <AppHeader
-        title="Sales Orders"
-        onBackPress={handleBack}
-        showNotification={false}
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#0B2A4A"
+        translucent={false}
       />
 
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Top Summary Bar */}
-        <View style={styles.summaryBar}>
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>Total Orders</Text>
-            <Text style={[styles.summaryValue, { color: "#2563EB" }]}>
-              {stats.totalOrders}
-            </Text>
+      {/* UNIFIED NAVY HEADER (MATCHES QUOTATION & BATCH SCHEDULE) */}
+      <View style={styles.header}>
+        {/* Header Top Bar */}
+        <View style={styles.headerTop}>
+          <View style={styles.headerTitleGroup}>
+            <View style={styles.headerTitleRow}>
+              <TouchableOpacity
+                style={styles.backBtn}
+                onPress={handleBack}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Text style={styles.headerTitle}>Sales Order</Text>
+            </View>
+            <View style={styles.plantBadgeRow}>
+              <Ionicons name="cube-outline" size={12} color="#94A3B8" />
+              <Text style={styles.plantBadgeText}>Fulfillment Pipeline</Text>
+            </View>
           </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>Ordered Vol</Text>
-            <Text style={[styles.summaryValue, { color: "#0284C7" }]}>
+
+          <View style={styles.headerRightActions}>
+            <TouchableOpacity
+              style={styles.refreshBtn}
+              onPress={() => fetchOrders(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="reload-outline"
+                size={18}
+                color="#FFFFFF"
+                style={refreshing ? { transform: [{ rotate: "45deg" }] } : undefined}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() =>
+                router.push("/sales-order/createSalesOrderScreen" as any)
+              }
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Integrated KPI Summary Strip */}
+        <View style={styles.kpiContainer}>
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiLabel}>TOTAL ORDERS</Text>
+            <Text style={styles.kpiValue}>{stats.totalOrders}</Text>
+          </View>
+          <View style={styles.kpiDivider} />
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiLabel}>ORDERED VOL</Text>
+            <Text style={[styles.kpiValue, { color: "#60A5FA" }]}>
               {formatVolume(stats.totalOrdered)} m³
             </Text>
           </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>Delivered Vol</Text>
-            <Text style={[styles.summaryValue, { color: "#059669" }]}>
+          <View style={styles.kpiDivider} />
+          <View style={styles.kpiCard}>
+            <Text style={styles.kpiLabel}>DELIVERED</Text>
+            <Text style={[styles.kpiValue, { color: "#34D399" }]}>
               {formatVolume(stats.totalDelivered)} m³
             </Text>
           </View>
         </View>
 
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <View
-            style={[
-              styles.searchBar,
-              {
-                backgroundColor: colors.surfaceContainerLow,
-                borderColor: colors.outlineVariant + "44",
-              },
-            ]}
-          >
-            <Ionicons name="search" size={18} color="#94A3B8" />
-            <TextInput
-              style={[styles.searchInput, { color: colors.text }]}
-              placeholder="Search by order no, customer, site, mix..."
-              placeholderTextColor="#94A3B8"
-              value={search}
-              onChangeText={setSearch}
-              clearButtonMode="while-editing"
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch("")}>
-                <Ionicons name="close-circle" size={18} color="#94A3B8" />
-              </TouchableOpacity>
-            )}
-          </View>
+        {/* Integrated Search Bar */}
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={18} color="#64748B" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by order no, customer, site, mix..."
+            placeholderTextColor="#94A3B8"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch("")}>
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
+            </TouchableOpacity>
+          )}
         </View>
+      </View>
 
-        {/* Filter Status Tabs */}
-        <View style={styles.tabsContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabsContent}
-          >
-            {filterTabs.map((tab) => {
-              const isSelected = activeTab === tab.value;
-              return (
-                <TouchableOpacity
-                  key={String(tab.value)}
+      {/* FILTER TABS */}
+      <View style={styles.tabsSection}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsContent}
+        >
+          {filterTabs.map((tab) => {
+            const isSelected = activeTab === tab.value;
+            return (
+              <TouchableOpacity
+                key={String(tab.value)}
+                style={[
+                  styles.tabChip,
+                  isSelected && styles.tabChipActive,
+                ]}
+                onPress={() => setActiveTab(tab.value)}
+                activeOpacity={0.75}
+              >
+                <Text
                   style={[
-                    styles.tabButton,
-                    isSelected && styles.tabButtonActive,
+                    styles.tabChipText,
+                    isSelected && styles.tabChipTextActive,
                   ]}
-                  onPress={() => setActiveTab(tab.value)}
-                  activeOpacity={0.75}
+                >
+                  {tab.label}
+                </Text>
+                <View
+                  style={[
+                    styles.tabChipBadge,
+                    isSelected && styles.tabChipBadgeActive,
+                  ]}
                 >
                   <Text
                     style={[
-                      styles.tabButtonText,
-                      isSelected && styles.tabButtonTextActive,
+                      styles.tabChipBadgeText,
+                      isSelected && styles.tabChipBadgeTextActive,
                     ]}
                   >
-                    {tab.label}
+                    {tab.count}
                   </Text>
-                  <View
-                    style={[
-                      styles.tabBadge,
-                      isSelected && styles.tabBadgeActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.tabBadgeText,
-                        isSelected && styles.tabBadgeTextActive,
-                      ]}
-                    >
-                      {tab.count}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
+      <View style={styles.container}>
         {/* Error Notice Banner */}
         {errorMessage && (
           <View style={styles.errorBanner}>
@@ -887,156 +958,196 @@ export default function SalesOrderScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: "#0B2A4A",
   },
   container: {
     flex: 1,
+    backgroundColor: "#F8FAFC",
   },
-  summaryBar: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 12,
+
+  // Dark Navy Header (Matches Quotation & Batch Schedule)
+  header: {
+    backgroundColor: "#0B2A4A",
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    alignItems: "center",
-    justifyContent: "space-around",
+    paddingTop: Platform.OS === "android" ? 14 : 10,
+    paddingBottom: 14,
   },
-  summaryBox: {
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 12,
+  },
+  headerTitleGroup: {
     flex: 1,
   },
-  summaryLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#64748B",
-    textTransform: "uppercase",
+  headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  plantBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
+    marginLeft: 44,
+  },
+  plantBadgeText: {
+    fontSize: 12,
+    color: "#94A3B8",
+    fontWeight: "500",
+  },
+  headerRightActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  refreshBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#2563EB",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  // Integrated KPI Strip
+  kpiContainer: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  kpiCard: {
+    flex: 1,
+    alignItems: "center",
+  },
+  kpiDivider: {
+    width: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    marginVertical: 2,
+  },
+  kpiLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#94A3B8",
     letterSpacing: 0.5,
   },
-  summaryValue: {
-    fontSize: 16,
+  kpiValue: {
+    fontSize: 14,
     fontWeight: "800",
+    color: "#FFFFFF",
     marginTop: 2,
   },
-  summaryDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: "#E2E8F0",
-  },
-  searchContainer: {
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 6,
-  },
+
+  // Search Bar
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
     paddingHorizontal: 12,
-    height: 44,
-    gap: 8,
+    height: 42,
   },
   searchInput: {
     flex: 1,
     fontSize: 13,
+    color: "#0F172A",
+    marginLeft: 8,
     paddingVertical: 0,
   },
-  tabsContainer: {
-    paddingBottom: 8,
+
+  // Filter Tabs
+  tabsSection: {
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    paddingVertical: 10,
   },
   tabsContent: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     gap: 8,
   },
-  tabButton: {
+  tabChip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
     backgroundColor: "#F1F5F9",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
     gap: 6,
   },
-  tabButtonActive: {
+  tabChipActive: {
     backgroundColor: "#2563EB",
   },
-  tabButtonText: {
+  tabChipText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#64748B",
+    color: "#475569",
   },
-  tabButtonTextActive: {
+  tabChipTextActive: {
     color: "#FFFFFF",
+    fontWeight: "700",
   },
-  tabBadge: {
+  tabChipBadge: {
     backgroundColor: "#E2E8F0",
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 1,
     borderRadius: 10,
-    minWidth: 18,
-    alignItems: "center",
   },
-  tabBadgeActive: {
-    backgroundColor: "#1D4ED8",
+  tabChipBadgeActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
   },
-  tabBadgeText: {
+  tabChipBadgeText: {
     fontSize: 10,
     fontWeight: "700",
     color: "#475569",
   },
-  tabBadgeTextActive: {
+  tabChipBadgeTextActive: {
     color: "#FFFFFF",
   },
-  errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEF2F2",
-    borderColor: "#FCA5A5",
-    borderWidth: 1,
-    marginHorizontal: 14,
-    marginBottom: 8,
-    padding: 10,
-    borderRadius: 8,
-    gap: 8,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 12,
-    color: "#B91C1C",
-  },
-  retryBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#2563EB",
-    paddingHorizontal: 4,
-  },
-  listContent: {
-    paddingHorizontal: 14,
-    paddingBottom: 88,
-    gap: 12,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: "#64748B",
-    fontWeight: "500",
-  },
+
+  // Card UI
   orderCard: {
-    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 14,
-    gap: 10,
+    borderColor: "#E2E8F0",
+    padding: 16,
+    marginBottom: 14,
     ...Platform.select({
       ios: {
-        shadowColor: "#000000",
+        shadowColor: "#0F172A",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
-        shadowRadius: 6,
+        shadowRadius: 8,
       },
       android: {
         elevation: 2,
@@ -1047,209 +1158,212 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 12,
   },
-  cardHeaderLeft: {
-    flex: 1,
-    marginRight: 8,
-  },
-  orderNoRow: {
+  headerBadgesLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+    flex: 1,
     flexWrap: "wrap",
   },
-  orderIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
-    backgroundColor: "#EFF6FF",
-    justifyContent: "center",
+  orderNoBadge: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 5,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   orderNoText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "800",
+    color: "#1E40AF",
   },
-  fullNumberChip: {
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
+  poRefBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
     borderColor: "#E2E8F0",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  fullNumberText: {
+  poRefText: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#475569",
+    color: "#64748B",
   },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
+    gap: 5,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   statusText: {
     fontSize: 11,
     fontWeight: "700",
   },
-  cardDivider: {
-    height: 1,
-    backgroundColor: "#F1F5F9",
+
+  // Project Section
+  projectSection: {
+    marginBottom: 12,
   },
-  detailsBlock: {
-    gap: 6,
+  customerNameText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 4,
   },
-  infoRow: {
+  siteRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 5,
   },
-  infoIconWrap: {
-    width: 22,
+  siteNameText: {
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: "500",
+  },
+
+  // Modern 3-Col Spec Box
+  specBox: {
+    flexDirection: "row",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#EDF2F7",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  specCol: {
+    flex: 1,
     alignItems: "center",
   },
-  infoContent: {
-    flex: 1,
+  specDivider: {
+    width: 1,
+    backgroundColor: "#E2E8F0",
+    marginVertical: 2,
   },
-  infoLabel: {
-    fontSize: 10,
-    fontWeight: "500",
-    color: "#94A3B8",
+  specHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 3,
   },
-  infoValueBold: {
+  specLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#64748B",
+    letterSpacing: 0.5,
+  },
+  specValue: {
     fontSize: 13,
     fontWeight: "700",
+    color: "#0F172A",
   },
-  infoValue: {
-    fontSize: 12,
-    fontWeight: "500",
+  specSubRate: {
+    fontSize: 10,
+    color: "#64748B",
+    fontWeight: "600",
+    marginTop: 2,
   },
-  ratePill: {
-    backgroundColor: "#F3E8FF",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  ratePillText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#7C3AED",
-  },
-  progressSection: {
+
+  // Fulfillment Progress Section
+  progressCardSection: {
     backgroundColor: "#F8FAFC",
     borderRadius: 10,
     padding: 10,
-    gap: 8,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#F1F5F9",
   },
-  progressHeader: {
+  progressHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 6,
   },
-  progressHeaderLeft: {
+  progressTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  progressTitle: {
-    fontSize: 11,
-    fontWeight: "700",
+  progressTitleText: {
+    fontSize: 12,
+    fontWeight: "600",
     color: "#334155",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
   progressPercentText: {
     fontSize: 12,
     fontWeight: "800",
-    color: "#2563EB",
   },
   progressBarTrack: {
-    height: 8,
+    height: 6,
     backgroundColor: "#E2E8F0",
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
   },
   progressBarFill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 3,
   },
-  progressMetricsRow: {
+  remainingNoticeRow: {
+    marginTop: 6,
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 4,
+    justifyContent: "flex-end",
   },
-  metricCol: {
-    flex: 1,
-    alignItems: "center",
-  },
-  metricLabel: {
-    fontSize: 10,
+  remainingLabel: {
+    fontSize: 11,
     color: "#64748B",
-    fontWeight: "500",
   },
-  metricValuePrimary: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginTop: 1,
-  },
-  metricValue: {
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 1,
-  },
-  metricColDivider: {
-    width: 1,
-    height: 18,
-    backgroundColor: "#E2E8F0",
-  },
+
+  // Card Footer
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
   },
   metaRow: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    flex: 1,
     flexWrap: "wrap",
+    flex: 1,
   },
-  pumpBadge: {
+  metaChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     backgroundColor: "#F1F5F9",
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  pumpBadgeText: {
+  metaChipText: {
     fontSize: 10,
     fontWeight: "600",
     color: "#475569",
     textTransform: "capitalize",
   },
-  taxBadge: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  taxBadgeText: {
-    fontSize: 10,
-    fontWeight: "500",
-    color: "#64748B",
-  },
-  editButton: {
+  actionEditBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
@@ -1260,74 +1374,113 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
   },
-  editButtonText: {
+  actionEditText: {
     fontSize: 12,
     fontWeight: "700",
     color: "#2563EB",
+  },
+
+  // Error Banner
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#FECACA",
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#B91C1C",
+  },
+  retryBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#DC2626",
+    textDecorationLine: "underline",
+  },
+
+  // Loading & Empty States
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "#64748B",
+    marginTop: 12,
+    fontWeight: "500",
   },
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 60,
-    paddingHorizontal: 20,
-    gap: 8,
+    paddingHorizontal: 24,
   },
   emptyTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: "#334155",
-    marginTop: 8,
+    marginTop: 12,
+    marginBottom: 4,
   },
   emptySubtitle: {
     fontSize: 13,
     color: "#94A3B8",
     textAlign: "center",
     lineHeight: 18,
+    marginBottom: 16,
   },
   emptyRetryBtn: {
-    backgroundColor: "#2563EB",
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  emptyRetryBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  emptyResetBtn: {
-    backgroundColor: "#F1F5F9",
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
-    marginTop: 8,
+  },
+  emptyRetryBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#2563EB",
+  },
+  emptyResetBtn: {
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   emptyResetBtnText: {
-    color: "#475569",
     fontSize: 13,
     fontWeight: "600",
+    color: "#475569",
+  },
+
+  // List Layout
+  listContent: {
+    padding: 16,
+    paddingBottom: 90,
   },
   fabButton: {
     position: "absolute",
     right: 20,
     bottom: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: "#2563EB",
     justifyContent: "center",
     alignItems: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#2563EB",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.35,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
+    zIndex: 99,
   },
 });

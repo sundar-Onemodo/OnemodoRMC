@@ -1,5 +1,11 @@
 import { baseURL } from "@/components/baseUrl/baseUrlAPI";
 import {
+  AlertButton,
+  AlertType,
+  CustomAlertModal,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
+import {
   setDropdowns,
   setDropdownsError,
   setDropdownsLoading,
@@ -1229,9 +1235,10 @@ export default function EditBatchScreen() {
       }
     } else {
       if (finalDate.getTime() <= batchingDateTime.getTime()) {
-        Alert.alert(
+        showAlert(
           "Invalid Dispatch Time",
           "Dispatch time must be scheduled after Batching time.",
+          "warning",
         );
         return;
       }
@@ -1246,39 +1253,41 @@ export default function EditBatchScreen() {
   // ----------------------------------------------------
   const handleUpdate = async () => {
     if (!scheduleId) {
-      Alert.alert("Error", "Schedule ID is missing.");
+      showAlert("Error", "Schedule ID is missing.", "error");
       return;
     }
 
     if (!selectedOrder?.id) {
-      Alert.alert("Missing Sales Order", "Please select a Sales Order.");
+      showAlert("Missing Sales Order", "Please select a Sales Order.", "warning");
       return;
     }
 
     if (!selectedSite?.id) {
-      Alert.alert("Missing Site", "Please select a delivery site.");
+      showAlert("Missing Site", "Please select a delivery site.", "warning");
       return;
     }
 
     if (!selectedMixDesign?.id) {
-      Alert.alert("Missing Mix Design", "Please select a concrete mix design.");
+      showAlert("Missing Mix Design", "Please select a concrete mix design.", "warning");
       return;
     }
 
     const tripVal = parseFloat(qtyM3);
     if (isNaN(tripVal) || tripVal <= 0) {
-      Alert.alert(
+      showAlert(
         "Invalid Trip Volume",
         "Please enter a valid trip volume in m³.",
+        "warning",
       );
       return;
     }
 
     const orderVolVal = parseFloat(orderVolumeM3);
     if (isNaN(orderVolVal) || orderVolVal <= 0) {
-      Alert.alert(
+      showAlert(
         "Invalid Order Volume",
         "Please enter a valid order volume in m³.",
+        "warning",
       );
       return;
     }
@@ -1287,9 +1296,10 @@ export default function EditBatchScreen() {
     const dispatchIso = formatToIsoWithoutZ(dispatchDateTime);
 
     if (dispatchDateTime.getTime() <= batchingDateTime.getTime()) {
-      Alert.alert(
+      showAlert(
         "Invalid Schedule Timings",
         "Dispatch time must be after Batching time. Please adjust the timings.",
+        "warning",
       );
       return;
     }
@@ -1345,9 +1355,10 @@ export default function EditBatchScreen() {
 
       console.log("[EditBatch] Response:", res.data);
 
-      Alert.alert(
+      showAlert(
         "Batch Schedule Updated",
         res.data?.message || `Schedule #${scheduleId} updated successfully.`,
+        "success",
         [
           {
             text: "View Schedules",
@@ -1360,11 +1371,11 @@ export default function EditBatchScreen() {
         "[EditBatch] Error updating batch schedule:",
         err?.response?.data || err?.message,
       );
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to update batch schedule. Please try again.";
-      Alert.alert("Update Failed", msg);
+      const msg = formatSubmissionError(
+        err,
+        "Failed to update batch schedule. Please try again.",
+      );
+      showAlert("Update Failed", msg, "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -1658,24 +1669,26 @@ export default function EditBatchScreen() {
                 <View style={styles.volumeRow}>
                   {/* Trip Volume */}
                   <View style={[styles.volumeCol, { marginRight: 8 }]}>
-                    <Text style={styles.volumeLabel}>TRIP VOLUME</Text>
+                    <Text style={styles.fieldLabel}>
+                      Trip Volume <Text style={styles.asterisk}>*</Text>
+                    </Text>
                     <View style={styles.volumeInputWrap}>
                       <TextInput
                         style={styles.volumeInput}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         value={qtyM3}
                         onChangeText={setQtyM3}
-                        placeholder="5"
+                        placeholder="5.0"
                         placeholderTextColor="#94A3B8"
                       />
                       <Text style={styles.volumeUnit}>m³</Text>
                     </View>
                   </View>
 
-                  {/* Order Volume (Non-editable: locked from Sales Order) */}
+                  {/* Order Volume - Locked / Non-editable */}
                   <View style={[styles.volumeCol, { marginLeft: 8 }]}>
                     <View style={styles.fieldLabelRow}>
-                      <Text style={styles.volumeLabel}>ORDER TOTAL</Text>
+                      <Text style={styles.fieldLabel}>Order Volume</Text>
                       <View style={styles.readOnlyBadge}>
                         <Ionicons name="lock-closed" size={10} color="#64748B" />
                         <Text style={styles.readOnlyBadgeText}>From SO</Text>
@@ -1694,7 +1707,7 @@ export default function EditBatchScreen() {
                         ]}
                         editable={false}
                         value={orderVolumeM3}
-                        placeholder="50"
+                        placeholder="50.0"
                         placeholderTextColor="#94A3B8"
                       />
                       <Text style={[styles.volumeUnit, { color: "#94A3B8" }]}>
@@ -2493,6 +2506,16 @@ export default function EditBatchScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Animated Custom Alert Modal */}
+      <CustomAlertModal
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+        onClose={hideAlert}
+      />
     </SafeAreaView>
   );
 }
@@ -2769,11 +2792,12 @@ const styles = StyleSheet.create({
   volumeInputWrap: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#CBD5E1",
     borderRadius: 10,
     paddingHorizontal: 12,
+    height: 48,
   },
   volumeInputWrapDisabled: {
     backgroundColor: "#F1F5F9",
@@ -2793,6 +2817,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#64748B",
+    marginLeft: 6,
   },
   remainingInfoBox: {
     flexDirection: "row",

@@ -807,8 +807,7 @@ export default function EditLeadScreen({
           <View style={styles.headerTitleGroup}>
             <Text style={styles.headerTitle}>Edit Lead</Text>
             <Text style={styles.headerSubtitle}>
-              {leadNumber ? `${leadNumber} · ` : ""}
-              Plant: {plant_name || "Ready-Mix Concrete"}
+              {leadNumber ? `${leadNumber} · Sales Pipeline` : "Sales Pipeline"}
             </Text>
           </View>
         </View>

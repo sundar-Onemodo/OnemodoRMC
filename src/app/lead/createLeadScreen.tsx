@@ -505,9 +505,9 @@ export default function CreateLeadScreen() {
             <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={styles.headerTitleGroup}>
-            <Text style={styles.headerTitle}>Add New Lead</Text>
+            <Text style={styles.headerTitle}>Create Lead</Text>
             <Text style={styles.headerSubtitle}>
-              Plant: {plant_name || "Ready-Mix Concrete"}
+              New Customer Inquiry · Sales Pipeline
             </Text>
           </View>
         </View>

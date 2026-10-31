@@ -1,4 +1,10 @@
 import { baseURL } from "@/components/baseUrl/baseUrlAPI";
+import {
+  AlertButton,
+  AlertType,
+  CustomAlertModal,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 import { AppHeader } from "@/components/ui/app-header";
 import {
   setDropdowns,
@@ -343,9 +349,51 @@ export default function CreateBatchScheduleScreen() {
   const [selectedMixDesign, setSelectedMixDesign] =
     useState<MixDesignDropdownItem | null>(null);
 
+  // Animated Custom Alert State
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: AlertType;
+    buttons?: AlertButton[];
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const showAlert = (
+    title: string,
+    message: string,
+    type: AlertType = "info",
+    buttons?: AlertButton[],
+  ) => {
+    setAlertConfig({
+      visible: true,
+      title,
+      message,
+      type,
+      buttons,
+    });
+  };
+
+  const hideAlert = () => {
+    setAlertConfig((prev) => ({ ...prev, visible: false }));
+  };
+
   // Decimal Volumes
   const [orderVolumeM3, setOrderVolumeM3] = useState<string>("50");
   const [qtyM3, setQtyM3] = useState<string>("5");
+
+  const remainingCalc = useMemo(() => {
+    const o = parseFloat(orderVolumeM3);
+    const t = parseFloat(qtyM3);
+    if (!isNaN(o) && !isNaN(t)) {
+      return Math.max(0, o - t).toFixed(1);
+    }
+    return "0.0";
+  }, [orderVolumeM3, qtyM3]);
 
   // Pump Type
   const [selectedPumpType, setSelectedPumpType] =
@@ -745,16 +793,18 @@ export default function CreateBatchScheduleScreen() {
     } else {
       // Validate against batching time
       if (newDate.getTime() === batchingDateTime.getTime()) {
-        Alert.alert(
+        showAlert(
           "Invalid Time Range",
           "Batching time and Dispatch time cannot be the same. Dispatch time must be scheduled after Batching time.",
+          "warning",
         );
         return;
       }
       if (newDate.getTime() < batchingDateTime.getTime()) {
-        Alert.alert(
+        showAlert(
           "Invalid Time Range",
           "Dispatch time cannot be earlier than Batching time. Please select a later time.",
+          "warning",
         );
         return;
       }
@@ -811,43 +861,48 @@ export default function CreateBatchScheduleScreen() {
   // ----------------------------------------------------
   const handleSubmit = async () => {
     if (!selectedOrder?.id) {
-      Alert.alert(
+      showAlert(
         "Missing Sales Order",
         "Please select a Sales Order from the dropdown.",
+        "warning",
       );
       return;
     }
 
     if (!selectedSite?.id) {
-      Alert.alert(
+      showAlert(
         "Missing Delivery Site",
         "The selected sales order does not have an associated delivery site.",
+        "warning",
       );
       return;
     }
 
     if (!selectedMixDesign?.id) {
-      Alert.alert(
+      showAlert(
         "Missing Mix Design",
         "The selected sales order does not have an associated concrete mix design.",
+        "warning",
       );
       return;
     }
 
     const tripVal = parseFloat(qtyM3);
     if (isNaN(tripVal) || tripVal <= 0) {
-      Alert.alert(
+      showAlert(
         "Invalid Trip Volume",
         "Please enter a valid trip volume in m³.",
+        "warning",
       );
       return;
     }
 
     const orderVolVal = parseFloat(orderVolumeM3);
     if (isNaN(orderVolVal) || orderVolVal <= 0) {
-      Alert.alert(
+      showAlert(
         "Invalid Order Volume",
         "Please enter a valid order volume in m³.",
+        "warning",
       );
       return;
     }
@@ -856,17 +911,19 @@ export default function CreateBatchScheduleScreen() {
     const dispatchIso = formatToIsoWithoutZ(dispatchDateTime);
 
     if (batchingIso === dispatchIso) {
-      Alert.alert(
+      showAlert(
         "Invalid Schedule Timings",
         "Batching time and Dispatch time cannot be the same. Dispatch time must be scheduled after Batching time.",
+        "warning",
       );
       return;
     }
 
     if (dispatchDateTime.getTime() <= batchingDateTime.getTime()) {
-      Alert.alert(
+      showAlert(
         "Invalid Schedule Timings",
         "Dispatch time must be after Batching time. Please check your schedule timings.",
+        "warning",
       );
       return;
     }
@@ -917,10 +974,11 @@ export default function CreateBatchScheduleScreen() {
 
       console.log("[CreateBatchSchedule] Response:", res.data);
 
-      Alert.alert(
+      showAlert(
         "Batch Schedule Created",
         res.data?.message ||
           "Batch schedule registered and queued for production.",
+        "success",
         [
           {
             text: "View Schedules",
@@ -933,11 +991,11 @@ export default function CreateBatchScheduleScreen() {
         "[CreateBatchSchedule] Error submitting:",
         err?.response?.data || err?.message,
       );
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Could not save batch schedule. Please check connection and try again.";
-      Alert.alert("Submission Failed", msg);
+      const msg = formatSubmissionError(
+        err,
+        "Could not save batch schedule. Please check connection and try again.",
+      );
+      showAlert("Submission Failed", msg, "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -1185,82 +1243,77 @@ export default function CreateBatchScheduleScreen() {
                   <MaterialCommunityIcons
                     name="cube-send"
                     size={20}
-                    color="#D97706"
+                    color="#2563EB"
                   />
-                  <Text style={styles.sectionTitle}>Concrete Volumes (m³)</Text>
+                  <Text style={styles.sectionTitle}>
+                    Concrete Volumes (m³) <Text style={styles.asterisk}>*</Text>
+                  </Text>
                 </View>
 
                 <View style={styles.twoColRow}>
-                  {/* Order Volume (Non-editable: from Sales Order) */}
-                  <View
-                    style={[
-                      styles.volumeCol,
-                      { backgroundColor: "#F1F5F9", borderColor: "#E2E8F0" },
-                    ]}
-                  >
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: 6,
-                      }}
-                    >
-                      <Text style={styles.volumeColLabel}>Order Volume</Text>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 3,
-                          backgroundColor: "#E2E8F0",
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                          borderRadius: 4,
-                        }}
-                      >
-                        <Ionicons name="lock-closed" size={10} color="#64748B" />
-                        <Text
-                          style={{
-                            fontSize: 9,
-                            fontWeight: "700",
-                            color: "#64748B",
-                          }}
-                        >
-                          From SO
-                        </Text>
-                      </View>
-                    </View>
-                    <TextInput
-                      style={[styles.volumeInput, { color: "#64748B" }]}
-                      editable={false}
-                      value={orderVolumeM3}
-                      placeholder="50"
-                      placeholderTextColor="#94A3B8"
-                    />
-                    <Text style={[styles.volumeUnit, { color: "#94A3B8" }]}>
-                      m³ Total
+                  {/* Trip Volume (qty_m3) Input Field */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>
+                      Trip Volume <Text style={styles.asterisk}>*</Text>
                     </Text>
+                    <View style={styles.volumeInputContainer}>
+                      <TextInput
+                        style={styles.volumeTextInput}
+                        keyboardType="decimal-pad"
+                        value={qtyM3}
+                        onChangeText={setQtyM3}
+                        placeholder="5.0"
+                        placeholderTextColor="#94A3B8"
+                      />
+                      <Text style={styles.unitSuffix}>m³</Text>
+                    </View>
                   </View>
 
-                  {/* Trip Volume (qty_m3) */}
-                  <View
-                    style={[styles.volumeCol, { backgroundColor: "#EFF6FF" }]}
-                  >
-                    <Text style={[styles.volumeColLabel, { color: "#2563EB" }]}>
-                      Trip Volume (qty_m3) *
-                    </Text>
-                    <TextInput
-                      style={[styles.volumeInput, { color: "#1D4ED8" }]}
-                      keyboardType="decimal-pad"
-                      value={qtyM3}
-                      onChangeText={setQtyM3}
-                      placeholder="5"
-                      placeholderTextColor="#94A3B8"
-                    />
-                    <Text style={[styles.volumeUnit, { color: "#2563EB" }]}>
-                      m³ This Pour
-                    </Text>
+                  {/* Order Volume (from Sales Order) - Locked / Non-editable */}
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.fieldLabelRow}>
+                      <Text style={styles.fieldLabel}>Order Volume</Text>
+                      <View style={styles.readOnlyBadge}>
+                        <Ionicons name="lock-closed" size={10} color="#64748B" />
+                        <Text style={styles.readOnlyBadgeText}>From SO</Text>
+                      </View>
+                    </View>
+                    <View
+                      style={[
+                        styles.volumeInputContainer,
+                        styles.volumeInputContainerDisabled,
+                      ]}
+                    >
+                      <TextInput
+                        style={[
+                          styles.volumeTextInput,
+                          styles.volumeTextInputDisabled,
+                        ]}
+                        editable={false}
+                        value={orderVolumeM3}
+                        placeholder="50.0"
+                        placeholderTextColor="#94A3B8"
+                      />
+                      <Text style={[styles.unitSuffix, { color: "#94A3B8" }]}>
+                        m³
+                      </Text>
+                    </View>
                   </View>
+                </View>
+
+                {/* Remaining Volume Info */}
+                <View style={styles.remainingInfoBox}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={16}
+                    color="#D97706"
+                  />
+                  <Text style={styles.remainingInfoText}>
+                    Remaining after this pour:{" "}
+                    <Text style={{ fontWeight: "800", color: "#D97706" }}>
+                      {remainingCalc} m³
+                    </Text>
+                  </Text>
                 </View>
               </View>
 
@@ -2114,6 +2167,16 @@ export default function CreateBatchScheduleScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Animated Custom Alert Modal */}
+      <CustomAlertModal
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+        onClose={hideAlert}
+      />
     </SafeAreaView>
   );
 }
@@ -2327,6 +2390,51 @@ const styles = StyleSheet.create({
   twoColRow: {
     flexDirection: "row",
     gap: 10,
+  },
+  volumeInputContainerDisabled: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
+  },
+  volumeTextInputDisabled: {
+    color: "#64748B",
+  },
+  volumeInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 48,
+  },
+  volumeTextInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+    paddingVertical: 10,
+  },
+  unitSuffix: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#64748B",
+    marginLeft: 6,
+  },
+  remainingInfoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFBEB",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 10,
+    gap: 6,
+  },
+  remainingInfoText: {
+    fontSize: 12,
+    color: "#92400E",
+    fontWeight: "500",
   },
   volumeCol: {
     flex: 1,

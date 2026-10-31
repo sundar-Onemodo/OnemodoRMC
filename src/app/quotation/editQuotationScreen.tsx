@@ -1,4 +1,5 @@
 import { baseURL } from "@/components/baseUrl/baseUrlAPI";
+import { fetchDropdowns } from "@/store/dropdownSlice";
 import {
   CustomerDropdownItem,
   SalesExecutiveDropdownItem,
@@ -115,6 +116,18 @@ const formatAmountWithDecimals = (
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+};
+
+export const formatPumpType = (type?: any): string => {
+  if (!type) return "";
+  if (typeof type === "object") {
+    return String(type.label || type.name || type.value || type.id || "");
+  }
+  const str = String(type);
+  return str
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
 };
 
 export function cleanSalesExecutiveName(rawName?: string | null): string {
@@ -384,6 +397,49 @@ export default function EditQuotationScreen({
   const [notes, setNotes] = useState<string>(
     "Delivery subject to schedule confirmation",
   );
+
+  const { pumpTypes } = useSelector((state: RootState) => state.dropdowns);
+  const [concretePump, setConcretePump] = useState<string | null>(() => {
+    return (
+      (passedQuotation as any)?.concrete_pump ||
+      (passedQuotation as any)?.pump_type ||
+      null
+    );
+  });
+  const [pumpRate, setPumpRate] = useState<string>(() => {
+    const pr = (passedQuotation as any)?.pump_rate;
+    return pr !== undefined && pr !== null ? String(pr) : "0";
+  });
+  const [adjustment, setAdjustment] = useState<string>(() => {
+    const adj = (passedQuotation as any)?.adjustment;
+    return adj !== undefined && adj !== null
+      ? String(Math.abs(parseFloat(adj) || 0))
+      : "0";
+  });
+
+  useEffect(() => {
+    if (!pumpTypes || pumpTypes.length === 0) {
+      dispatch(fetchDropdowns() as any);
+    }
+  }, [pumpTypes, dispatch]);
+
+  const handleAdjustmentChange = (val: string) => {
+    let clean = val.replace(/[^0-9.]/g, "");
+    const parts = clean.split(".");
+    if (parts.length > 2) {
+      clean = `${parts[0]}.${parts.slice(1).join("")}`;
+    }
+    setAdjustment(clean);
+  };
+
+  const handlePumpRateChange = (val: string) => {
+    let clean = val.replace(/[^0-9.]/g, "");
+    const parts = clean.split(".");
+    if (parts.length > 2) {
+      clean = `${parts[0]}.${parts.slice(1).join("")}`;
+    }
+    setPumpRate(clean);
+  };
 
   const handleBack = useCallback(() => {
     if (onBack) {
@@ -1001,6 +1057,19 @@ export default function EditQuotationScreen({
             setNotes(quoteData.notes);
           }
 
+          // 5b. Pump & Adjustment
+          if (quoteData.concrete_pump || quoteData.pump_type) {
+            setConcretePump(quoteData.concrete_pump || quoteData.pump_type);
+          }
+          if (quoteData.pump_rate !== undefined && quoteData.pump_rate !== null) {
+            setPumpRate(String(quoteData.pump_rate));
+          }
+          if (quoteData.adjustment !== undefined && quoteData.adjustment !== null) {
+            setAdjustment(
+              String(Math.abs(parseFloat(quoteData.adjustment) || 0)),
+            );
+          }
+
           // 6. Line Items
           if (Array.isArray(quoteData.items) && quoteData.items.length > 0) {
             const mapped: FormLineItem[] = quoteData.items.map(
@@ -1178,18 +1247,27 @@ export default function EditQuotationScreen({
   };
 
   const totalSummary = useMemo(() => {
-    return items.reduce(
+    const baseSummary = items.reduce(
       (acc, item) => {
         return {
           grossAmount: acc.grossAmount + item.calculation.grossAmount,
           untaxedAmount: acc.untaxedAmount + item.calculation.untaxedAmount,
           taxAmount: acc.taxAmount + item.calculation.taxAmount,
-          amountTotal: acc.amountTotal + item.calculation.amountTotal,
+          itemsAmountTotal: acc.itemsAmountTotal + item.calculation.amountTotal,
         };
       },
-      { grossAmount: 0, untaxedAmount: 0, taxAmount: 0, amountTotal: 0 },
+      { grossAmount: 0, untaxedAmount: 0, taxAmount: 0, itemsAmountTotal: 0 },
     );
-  }, [items]);
+
+    const adjVal = Math.max(0, parseFloat(adjustment) || 0);
+    const finalAmountTotal = baseSummary.itemsAmountTotal + adjVal;
+
+    return {
+      ...baseSummary,
+      adjustment: adjVal,
+      amountTotal: finalAmountTotal,
+    };
+  }, [items, adjustment]);
 
   const openCustomerPicker = () => {
     const list = cachedCustomers;
@@ -1270,6 +1348,39 @@ export default function EditQuotationScreen({
           setStoredSalesExecutiveId(Number(found.id));
           dispatch(setSelectedSalesExecutive(found));
         }
+      },
+    });
+    setPickerSearch("");
+    setPickerModalVisible(true);
+  };
+
+  const openPumpPicker = () => {
+    const list: { id: string | null; label: string; subLabel?: string }[] = [
+      { id: null, label: "None / Direct Pour" },
+    ];
+    const availablePumps =
+      Array.isArray(pumpTypes) && pumpTypes.length > 0
+        ? pumpTypes
+        : [
+            "boom_pump",
+            "line_pump",
+            "crane_bucket",
+            "direct_pour",
+            "stationary_pump",
+          ];
+    availablePumps.forEach((p: any) => {
+      if (!p) return;
+      const val = typeof p === "object" ? p.value || p.id || p.name : String(p);
+      const lbl = typeof p === "object" ? p.label || p.name : formatPumpType(p);
+      list.push({ id: val, label: lbl });
+    });
+
+    setPickerConfig({
+      title: "Select Concrete Pump",
+      items: list,
+      selectedId: concretePump,
+      onSelect: (item) => {
+        setConcretePump(item.id ? String(item.id) : null);
       },
     });
     setPickerSearch("");
@@ -1467,6 +1578,9 @@ export default function EditQuotationScreen({
       is_tax_inclusive: isTaxInclusive ? 1 : 0,
       notes: notes.trim(),
       plant_id: effectivePlantId ? Number(effectivePlantId) : undefined,
+      concrete_pump: concretePump || null,
+      pump_rate: parseFloat(pumpRate) || 0,
+      adjustment: parseFloat(adjustment) || 0,
       items: items.map((it) => ({
         mix_design_id: Number(it.mix_design_id),
         quantity: Number(parseFloat(it.quantity).toFixed(2)),
@@ -1477,6 +1591,13 @@ export default function EditQuotationScreen({
             : null,
       })),
     };
+
+    console.log(
+      "\n==================== [EDIT QUOTATION PAYLOAD] ====================\n" +
+        JSON.stringify(payload, null, 2) +
+        "\n==================================================================",
+    );
+    console.log("[EditQuotationScreen] Payload Object:", payload);
 
     const headers: Record<string, string> = {
       Accept: "application/json",
@@ -1607,8 +1728,7 @@ export default function EditQuotationScreen({
           <View style={styles.headerTitleGroup}>
             <Text style={styles.headerTitle}>Edit Quotation</Text>
             <Text style={styles.headerSubtitle}>
-              {quotationReference ? `${quotationReference} · ` : ""}
-              Plant: {plant_name || "Ready-Mix Concrete"}
+              {quotationReference ? `${quotationReference} · Commercial Quote` : "Commercial Quote"}
             </Text>
           </View>
         </View>
@@ -1747,6 +1867,41 @@ export default function EditQuotationScreen({
                   {formatDisplayDate(validityDate)}
                 </Text>
               </TouchableOpacity>
+            </View>
+
+            {/* PUMP & ADJUSTMENT FIELDS */}
+            <View style={styles.rowTwoCol}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Pump type</Text>
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={openPumpPicker}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownText,
+                      !concretePump && styles.dropdownPlaceholder,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {formatPumpType(concretePump) || "Select Pump Type"}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Pump rate in ₹</Text>
+                <TextInput
+                  style={styles.textInput}
+                  keyboardType="decimal-pad"
+                  value={pumpRate}
+                  onChangeText={handlePumpRateChange}
+                  placeholder="0"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
             </View>
 
             <View style={styles.productsSectionHeader}>
@@ -1947,6 +2102,26 @@ export default function EditQuotationScreen({
                   Untaxed: ₹
                   {formatAmountWithDecimals(totalSummary.untaxedAmount)} · Tax:
                   ₹{formatAmountWithDecimals(totalSummary.taxAmount)}
+                </Text>
+              </View>
+
+              <View style={styles.estimateAdjustmentContainer}>
+                <Text style={styles.estimateAdjustmentLabel}>Adjustment in ₹</Text>
+                <TextInput
+                  style={styles.estimateAdjustmentInput}
+                  keyboardType="decimal-pad"
+                  value={adjustment}
+                  onChangeText={handleAdjustmentChange}
+                  placeholder="0.00"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+
+              <View style={styles.adjustmentCalcRow}>
+                <Text style={styles.adjustmentCalcText}>
+                  Amount: ₹{formatAmountWithDecimals(totalSummary.itemsAmountTotal)} +
+                  Adjust: ₹{formatAmountWithDecimals(totalSummary.adjustment)} = ₹
+                  {formatAmountWithDecimals(totalSummary.amountTotal)}
                 </Text>
               </View>
 
@@ -2519,6 +2694,41 @@ const styles = StyleSheet.create({
   },
 
   // Total Estimate Card (Matches reference image)
+  estimateAdjustmentContainer: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  estimateAdjustmentLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#475569",
+    marginBottom: 4,
+  },
+  estimateAdjustmentInput: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 40,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0F172A",
+  },
+  adjustmentCalcRow: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  adjustmentCalcText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1E40AF",
+  },
   totalEstimateCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 14,

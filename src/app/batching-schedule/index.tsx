@@ -514,29 +514,16 @@ export default function BatchingScheduleScreen() {
       <View style={styles.card}>
         {/* Card Header: Pour Ref + Small Edit (when scheduled) & Interactive Status Badge */}
         <View style={styles.cardHeader}>
-          <View style={styles.headerLeftWrap}>
-            <View style={styles.pourRefBadge}>
-              <MaterialCommunityIcons
-                name="clipboard-text-outline"
-                size={14}
-                color="#2563EB"
-                style={{ marginRight: 5 }}
-              />
-              <Text style={styles.pourRefText}>
-                {item.pour_reference || `BS-${item.id}`}
-              </Text>
-            </View>
-
-            {(item.status || "").toLowerCase().trim() === "scheduled" && (
-              <TouchableOpacity
-                style={styles.smallEditBtn}
-                onPress={() => handleEditSchedule(item)}
-                activeOpacity={0.7}
-              >
-                <MaterialIcons name="edit" size={13} color="#2563EB" />
-                <Text style={styles.smallEditText}>Edit</Text>
-              </TouchableOpacity>
-            )}
+          <View style={styles.pourRefBadge}>
+            <MaterialCommunityIcons
+              name="clipboard-text-outline"
+              size={14}
+              color="#2563EB"
+              style={{ marginRight: 5 }}
+            />
+            <Text style={styles.pourRefText}>
+              {item.pour_reference || `BS-${item.id}`}
+            </Text>
           </View>
 
           {/* Top Status Badge */}
@@ -689,65 +676,42 @@ export default function BatchingScheduleScreen() {
                 }
               </Text>
             </View>
-
-            {/* 3. ETA Site */}
-            <View style={styles.timelineSlot}>
-              <View style={styles.timelineSlotHeader}>
-                <Ionicons name="location-outline" size={13} color="#059669" />
-                <Text style={styles.timelineSlotLabel}>ETA Site</Text>
-              </View>
-              <Text style={styles.timelineSlotDate}>
-                {formatDateTimeFriendly(item.eta_site, item.schedule_date).date}
-              </Text>
-              <Text style={styles.timelineSlotTime}>
-                {formatDateTimeFriendly(item.eta_site, item.schedule_date).time}
-              </Text>
-            </View>
-
-            {/* 4. Unloading Start */}
-            <View style={styles.timelineSlot}>
-              <View style={styles.timelineSlotHeader}>
-                <MaterialCommunityIcons
-                  name="download-outline"
-                  size={13}
-                  color="#D97706"
-                />
-                <Text style={styles.timelineSlotLabel}>Unload Start</Text>
-              </View>
-              <Text style={styles.timelineSlotDate}>
-                {
-                  formatDateTimeFriendly(
-                    item.unloading_start,
-                    item.schedule_date,
-                  ).date
-                }
-              </Text>
-              <Text style={styles.timelineSlotTime}>
-                {
-                  formatDateTimeFriendly(
-                    item.unloading_start,
-                    item.schedule_date,
-                  ).time
-                }
-              </Text>
-            </View>
           </View>
         </View>
 
-        {/* Notes Preview if available */}
-        {item.notes ? (
-          <View style={styles.notesContainer}>
-            <Ionicons
-              name="information-circle-outline"
-              size={14}
-              color="#64748B"
-            />
-            <Text style={styles.notesText} numberOfLines={2}>
-              {item.notes}
-            </Text>
+        {/* Card Footer: Notes on Left & Edit Button in Bottom Right Corner (like quotation list screen) */}
+        {(Boolean(item.notes) ||
+          (item.status || "").toLowerCase().trim() === "scheduled") && (
+          <View style={styles.cardFooter}>
+            <View style={styles.footerLeft}>
+              {item.notes ? (
+                <View style={styles.notesContainer}>
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={13}
+                    color="#64748B"
+                  />
+                  <Text style={styles.notesText} numberOfLines={1}>
+                    {item.notes}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.footerRight}>
+              {(item.status || "").toLowerCase().trim() === "scheduled" && (
+                <TouchableOpacity
+                  style={styles.actionEditBtn}
+                  onPress={() => handleEditSchedule(item)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="create-outline" size={13} color="#2563EB" />
+                  <Text style={styles.actionEditText}>Edit</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        ) : null}
-      </View>
+        )}</View>
     );
   };
 
@@ -1343,25 +1307,37 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Header & Small Edit Button
-  headerLeftWrap: {
+  // Card Footer & Bottom-Right Edit Button (matches Quotation list screen)
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+    paddingTop: 8,
+    marginTop: 6,
+  },
+  footerLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
+  footerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    flexShrink: 1,
+    justifyContent: "flex-end",
   },
-  smallEditBtn: {
+  actionEditBtn: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#EFF6FF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: "#BFDBFE",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 3,
+    gap: 4,
   },
-  smallEditText: {
+  actionEditText: {
     fontSize: 11,
     fontWeight: "700",
     color: "#2563EB",

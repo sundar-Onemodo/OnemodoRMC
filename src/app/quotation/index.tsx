@@ -456,7 +456,7 @@ const QuotationCard = React.memo(function QuotationCard({
         </View>
 
         <View style={styles.badgesRightRow}>
-          {item.is_customer_po === 1 && (
+          {isPOConverted && (
             <View style={styles.poBadge}>
               <Ionicons
                 name={"shield-checkmark"}
@@ -625,12 +625,9 @@ const QuotationCard = React.memo(function QuotationCard({
             </TouchableOpacity>
           )}
 
-          {isApproved && (
+          {isApproved && !isPOConverted && (
             <TouchableOpacity
-              style={[
-                styles.actionConvertBtn,
-                isPOConverted && styles.actionConvertedBtn,
-              ]}
+              style={styles.actionConvertBtn}
               onPress={() => onConvertToCustomerPO(item)}
               activeOpacity={0.7}
               disabled={isConverting}
@@ -638,28 +635,34 @@ const QuotationCard = React.memo(function QuotationCard({
               {isConverting ? (
                 <ActivityIndicator
                   size="small"
-                  color={isPOConverted ? "#15803D" : "#047857"}
+                  color="#047857"
                 />
               ) : (
                 <>
                   <Ionicons
-                    name={isPOConverted ? "checkmark-done-circle" : "swap-horizontal"}
+                    name="swap-horizontal"
                     size={14}
-                    color={isPOConverted ? "#15803D" : "#047857"}
+                    color="#047857"
                   />
-                  <Text
-                    style={[
-                      styles.actionConvertText,
-                      isPOConverted && styles.actionConvertedText,
-                    ]}
-                  >
-                    {isPOConverted
-                      ? "Converted to Customer PO"
-                      : "Convert to Customer PO"}
+                  <Text style={styles.actionConvertText}>
+                    Convert to Customer PO
                   </Text>
                 </>
               )}
             </TouchableOpacity>
+          )}
+
+          {isApproved && isPOConverted && (
+            <View style={styles.actionConvertedBtn}>
+              <Ionicons
+                name="shield-checkmark"
+                size={13}
+                color="#15803D"
+              />
+              <Text style={styles.actionConvertedText}>
+                Customer PO Converted
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -1218,6 +1221,9 @@ export default function QuotationScreen({
                   res.data,
                 );
                 updateQuotationInState(item.id, { is_customer_po: 1 });
+                setViewingQuotation((prev) =>
+                  prev && prev.id === item.id ? { ...prev, is_customer_po: 1 } : prev,
+                );
                 loadQuotations(false, true);
                 Alert.alert(
                   "Success",
@@ -1291,12 +1297,12 @@ export default function QuotationScreen({
               >
                 <Ionicons name={"arrow-back"} size={20} color={"#fff"} />
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>Quotations</Text>
+              <Text style={styles.headerTitle}>Quotation</Text>
             </View>
             <View style={styles.plantBadgeRow}>
-              <Ionicons name={"business"} size={12} color={"#94A3B8"} />
+              <Ionicons name={"receipt-outline"} size={12} color={"#94A3B8"} />
               <Text style={styles.plantBadgeText}>
-                {plant_name ? plant_name : "Ready-Mix Commercial Pipeline"}
+                Commercial Pipeline
               </Text>
             </View>
           </View>
@@ -1545,7 +1551,9 @@ export default function QuotationScreen({
                       </Text>
                     </View>
 
-                    {viewingQuotation.is_customer_po === 1 && (
+                    {(Number(viewingQuotation.is_customer_po) === 1 ||
+                      String(viewingQuotation.is_customer_po) === "1" ||
+                      Boolean((viewingQuotation as any).is_customer_po_converted)) && (
                       <View style={styles.poBadge}>
                         <Ionicons
                           name="shield-checkmark"
@@ -1914,30 +1922,45 @@ export default function QuotationScreen({
                       </TouchableOpacity>
                     </>
                   ) : currentStatus === 2 ? (
-                    // Approved status: Show Convert to Customer PO button
-                    <TouchableOpacity
-                      style={styles.modalBtnConvert}
-                      onPress={() => handleConvertToCustomerPO(viewingQuotation)}
-                      activeOpacity={0.8}
-                      disabled={Boolean(actionLoading)}
-                    >
-                      {actionLoading === "convert" ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <MaterialCommunityIcons
-                            name="swap-horizontal"
-                            size={20}
-                            color="#FFFFFF"
-                          />
-                          <Text style={styles.modalBtnConvertText}>
-                            {Number(viewingQuotation.is_customer_po) === 1
-                              ? "Converted to Customer PO"
-                              : "Convert to Customer PO"}
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+                    !(
+                      Number(viewingQuotation.is_customer_po) === 1 ||
+                      String(viewingQuotation.is_customer_po) === "1" ||
+                      Boolean((viewingQuotation as any).is_customer_po_converted)
+                    ) ? (
+                      // Approved status: Show Convert to Customer PO button
+                      <TouchableOpacity
+                        style={styles.modalBtnConvert}
+                        onPress={() => handleConvertToCustomerPO(viewingQuotation)}
+                        activeOpacity={0.8}
+                        disabled={Boolean(actionLoading)}
+                      >
+                        {actionLoading === "convert" ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <>
+                            <MaterialCommunityIcons
+                              name="swap-horizontal"
+                              size={20}
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.modalBtnConvertText}>
+                              Convert to Customer PO
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.modalPoConvertedBadge}>
+                        <Ionicons
+                          name="shield-checkmark"
+                          size={18}
+                          color="#047857"
+                        />
+                        <Text style={styles.modalPoConvertedText}>
+                          Customer PO Converted
+                        </Text>
+                      </View>
+                    )
                   ) : null}
                 </View>
               );
@@ -2830,6 +2853,23 @@ const styles = StyleSheet.create({
   },
   modalBtnConvertText: {
     color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  modalPoConvertedBadge: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1.5,
+    borderColor: "#A7F3D0",
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  modalPoConvertedText: {
+    color: "#047857",
     fontSize: 14,
     fontWeight: "700",
   },
