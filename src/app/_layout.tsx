@@ -9,12 +9,14 @@ import { Drawer } from '@/components/ui/drawer';
 import { AuthProvider, useAuth } from '@/context/auth-context';
 import LoginScreen from './login';
 
-import { persistor, store } from '@/store/store';
-import { Provider } from 'react-redux';
+import { persistor, store, RootState } from '@/store/store';
+import { Provider, useSelector } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 
 function TabLayoutInner() {
   const { isAuthenticated, login } = useAuth();
+  const reduxToken = useSelector((state: RootState) => state.auth?.token);
+  const isUserAuthenticated = Boolean(reduxToken || isAuthenticated);
   const colorScheme = useColorScheme();
   
   return (
@@ -22,7 +24,7 @@ function TabLayoutInner() {
       <View style={{ flex: 1 }}>
         <StatusBar style="light" />
         <AnimatedSplashOverlay />
-        {isAuthenticated ? (
+        {isUserAuthenticated ? (
           <>
             <AppTabs />
             <Drawer />
@@ -39,10 +41,10 @@ export default function TabLayout() {
   return (
     <Provider store={store} >
       <PersistGate loading={null} persistor={persistor}>
-    <AuthProvider>
-      <TabLayoutInner />
-    </AuthProvider>
-    </PersistGate>
+        <AuthProvider>
+          <TabLayoutInner />
+        </AuthProvider>
+      </PersistGate>
     </Provider>
   );
 }

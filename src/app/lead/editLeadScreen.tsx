@@ -3,11 +3,12 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import axios from "axios";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -184,6 +185,73 @@ export default function EditLeadScreen({
   } = useSelector((state: RootState) => state.dropdowns);
 
   const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardPadding, setKeyboardPadding] = useState<number>(0);
+  const section1YRef = useRef<number>(0);
+  const section3YRef = useRef<number>(0);
+  const section5YRef = useRef<number>(0);
+  const activeInputRef = useRef<string | null>(null);
+
+  const scrollToTarget = useCallback((target?: string | null, delay = 100) => {
+    const current = target ?? activeInputRef.current;
+    if (!current) return;
+
+    setTimeout(() => {
+      if (!scrollViewRef.current) return;
+
+      if (current === "section5" || current === "remarks") {
+        scrollViewRef.current.scrollToEnd({ animated: true });
+      } else if (current === "section3" || current === "qty") {
+        const targetY = Math.max(0, section3YRef.current - 24);
+        scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+      } else if (current === "section1") {
+        const targetY = Math.max(0, section1YRef.current - 24);
+        scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+      }
+    }, delay);
+  }, []);
+
+  const handleInputFocus = useCallback(
+    (target: string) => {
+      activeInputRef.current = target;
+      scrollToTarget(target, Platform.OS === "ios" ? 100 : 150);
+    },
+    [scrollToTarget],
+  );
+
+  const handleInputBlur = useCallback(() => {
+    activeInputRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const onKeyboardShow = (e: any) => {
+      const height = e?.endCoordinates?.height || 0;
+      setKeyboardPadding(height);
+      if (activeInputRef.current) {
+        scrollToTarget(
+          activeInputRef.current,
+          Platform.OS === "ios" ? 50 : 100,
+        );
+      }
+    };
+
+    const onKeyboardHide = () => {
+      setKeyboardPadding(0);
+      activeInputRef.current = null;
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onKeyboardShow);
+    const hideSub = Keyboard.addListener(hideEvent, onKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scrollToTarget]);
 
   // Screen State
   const [loadingDetail, setLoadingDetail] = useState<boolean>(() =>
@@ -822,14 +890,19 @@ export default function EditLeadScreen({
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
         >
           <ScrollView
             ref={scrollViewRef}
             style={styles.container}
             contentContainerStyle={[
               styles.scrollContent,
-              { paddingBottom: 60 },
+              {
+                paddingBottom:
+                  keyboardPadding > 0
+                    ? keyboardPadding + 16
+                    : 40,
+              },
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -838,7 +911,12 @@ export default function EditLeadScreen({
             {/* ==========================================
                 SECTION 1: PROJECT & CONTACT DETAILS
             ========================================== */}
-            <View style={styles.card}>
+            <View
+              style={styles.card}
+              onLayout={(e) => {
+                section1YRef.current = e.nativeEvent.layout.y;
+              }}
+            >
               <View style={styles.cardSectionHeader}>
                 <Ionicons name="business" size={16} color="#2563EB" />
                 <Text style={styles.cardSectionTitle}>
@@ -1120,7 +1198,12 @@ export default function EditLeadScreen({
             {/* ==========================================
                 SECTION 3: CONCRETE REQUIREMENT & FINANCIALS & PURCHASE DATE
             ========================================== */}
-            <View style={styles.card}>
+            <View
+              style={styles.card}
+              onLayout={(e) => {
+                section3YRef.current = e.nativeEvent.layout.y;
+              }}
+            >
               <View style={styles.cardSectionHeader}>
                 <MaterialCommunityIcons
                   name="cube-outline"
@@ -1180,6 +1263,8 @@ export default function EditLeadScreen({
                     placeholderTextColor="#94A3B8"
                     value={requirement}
                     onChangeText={setRequirement}
+                    onFocus={() => handleInputFocus("section3")}
+                    onBlur={handleInputBlur}
                   />
                 </View>
               </View>
@@ -1205,6 +1290,8 @@ export default function EditLeadScreen({
                       keyboardType="numeric"
                       value={estimatedQuantity}
                       onChangeText={setEstimatedQuantity}
+                      onFocus={() => handleInputFocus("section3")}
+                      onBlur={handleInputBlur}
                     />
                   </View>
                 </View>
@@ -1225,6 +1312,8 @@ export default function EditLeadScreen({
                       keyboardType="numeric"
                       value={expectedValue}
                       onChangeText={setExpectedValue}
+                      onFocus={() => handleInputFocus("section3")}
+                      onBlur={handleInputBlur}
                     />
                   </View>
                 </View>
@@ -1269,7 +1358,12 @@ export default function EditLeadScreen({
             {/* ==========================================
                 SECTION 5: SITE LOCATION & REMARKS
             ========================================== */}
-            <View style={styles.card}>
+            <View
+              style={styles.card}
+              onLayout={(e) => {
+                section5YRef.current = e.nativeEvent.layout.y;
+              }}
+            >
               <View style={styles.cardSectionHeader}>
                 <Ionicons name="location" size={16} color="#DC2626" />
                 <Text style={styles.cardSectionTitle}>Location & Notes</Text>
@@ -1293,6 +1387,8 @@ export default function EditLeadScreen({
                     placeholderTextColor="#94A3B8"
                     value={deliveryLocation}
                     onChangeText={setDeliveryLocation}
+                    onFocus={() => handleInputFocus("section5")}
+                    onBlur={handleInputBlur}
                   />
                 </View>
               </View>
@@ -1313,6 +1409,8 @@ export default function EditLeadScreen({
                     placeholderTextColor="#94A3B8"
                     value={address}
                     onChangeText={setAddress}
+                    onFocus={() => handleInputFocus("section5")}
+                    onBlur={handleInputBlur}
                   />
                 </View>
               </View>
@@ -1328,6 +1426,8 @@ export default function EditLeadScreen({
                   numberOfLines={3}
                   value={remarks}
                   onChangeText={setRemarks}
+                  onFocus={() => handleInputFocus("section5")}
+                  onBlur={handleInputBlur}
                 />
               </View>
             </View>
@@ -1364,8 +1464,6 @@ export default function EditLeadScreen({
               </TouchableOpacity>
             </View>
 
-            {/* Extra spacing */}
-            <View style={{ height: 30 }} />
           </ScrollView>
         </KeyboardAvoidingView>
       )}

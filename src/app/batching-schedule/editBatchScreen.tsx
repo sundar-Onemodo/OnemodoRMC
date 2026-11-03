@@ -25,12 +25,13 @@ import {
 } from "@expo/vector-icons";
 import axios from "axios";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -310,6 +311,70 @@ const STATUS_OPTIONS = [
 // ==========================================
 
 export default function EditBatchScreen() {
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardPadding, setKeyboardPadding] = useState<number>(0);
+  const volumeSectionYRef = useRef<number>(0);
+  const notesSectionYRef = useRef<number>(0);
+  const activeInputRef = useRef<string | null>(null);
+
+  const scrollToTarget = useCallback((target?: string | null, delay = 100) => {
+    const current = target ?? activeInputRef.current;
+    if (!current) return;
+
+    setTimeout(() => {
+      if (!scrollViewRef.current) return;
+
+      if (current === "notes") {
+        scrollViewRef.current.scrollToEnd({ animated: true });
+      } else if (current === "volume") {
+        const targetY = Math.max(0, volumeSectionYRef.current - 24);
+        scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+      }
+    }, delay);
+  }, []);
+
+  const handleInputFocus = useCallback(
+    (target: string) => {
+      activeInputRef.current = target;
+      scrollToTarget(target, Platform.OS === "ios" ? 100 : 150);
+    },
+    [scrollToTarget],
+  );
+
+  const handleInputBlur = useCallback(() => {
+    activeInputRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const onKeyboardShow = (e: any) => {
+      const height = e?.endCoordinates?.height || 0;
+      setKeyboardPadding(height);
+      if (activeInputRef.current) {
+        scrollToTarget(
+          activeInputRef.current,
+          Platform.OS === "ios" ? 50 : 100,
+        );
+      }
+    };
+
+    const onKeyboardHide = () => {
+      setKeyboardPadding(0);
+      activeInputRef.current = null;
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onKeyboardShow);
+    const hideSub = Keyboard.addListener(hideEvent, onKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scrollToTarget]);
   const router = useRouter();
   const dispatch = useDispatch();
   const params = useLocalSearchParams<{
@@ -1447,12 +1512,23 @@ export default function EditBatchScreen() {
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === "ios" ? "padding" : undefined}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
           >
             <ScrollView
+              ref={scrollViewRef}
               style={styles.scrollContainer}
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[
+                styles.scrollContent,
+                {
+                  paddingBottom:
+                    keyboardPadding > 0
+                      ? keyboardPadding + 16
+                      : 90,
+                },
+              ]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
             >
               {/* SECTION 1: SALES ORDER */}
               <View style={[styles.sectionCard, styles.highlightCard]}>
@@ -1678,6 +1754,8 @@ export default function EditBatchScreen() {
                         keyboardType="decimal-pad"
                         value={qtyM3}
                         onChangeText={setQtyM3}
+                        onFocus={() => handleInputFocus("volume")}
+                        onBlur={handleInputBlur}
                         placeholder="5.0"
                         placeholderTextColor="#94A3B8"
                       />
@@ -1895,7 +1973,12 @@ export default function EditBatchScreen() {
               </View>
 
               {/* SECTION 8: NOTES */}
-              <View style={styles.sectionCard}>
+              <View
+                style={styles.sectionCard}
+                onLayout={(e) => {
+                  notesSectionYRef.current = e.nativeEvent.layout.y;
+                }}
+              >
                 <View style={styles.sectionHeader}>
                   <MaterialCommunityIcons
                     name="note-text-outline"
@@ -1910,6 +1993,8 @@ export default function EditBatchScreen() {
                     style={styles.textArea}
                     value={notes}
                     onChangeText={setNotes}
+                    onFocus={() => handleInputFocus("notes")}
+                    onBlur={handleInputBlur}
                     placeholder="Requested by sales executive"
                     placeholderTextColor="#94A3B8"
                     multiline
@@ -1917,13 +2002,10 @@ export default function EditBatchScreen() {
                   />
                 </View>
               </View>
-
-              <View style={{ height: 100 }} />
             </ScrollView>
-          </KeyboardAvoidingView>
 
-          {/* BOTTOM ACTION BAR */}
-          <View style={styles.bottomBar}>
+            {/* BOTTOM ACTION BAR */}
+            <View style={styles.bottomBar}>
             <TouchableOpacity
               style={[
                 styles.submitButton,
@@ -1954,6 +2036,7 @@ export default function EditBatchScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+          </KeyboardAvoidingView>
         </>
       )}
 

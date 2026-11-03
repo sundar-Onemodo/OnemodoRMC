@@ -29,6 +29,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDispatch, useSelector } from "react-redux";
+import {
+  CustomAlertModal,
+  AlertType,
+  AlertButton,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 
 // ==========================================
 // INTERFACES
@@ -170,6 +176,33 @@ const formatRate = (val?: number | string | null): string => {
   return "₹" + Math.round(num).toLocaleString("en-IN");
 };
 
+export async function deleteSalesOrderApi(
+  orderId: number | string,
+  token?: string | null,
+  plantId?: number | null,
+) {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const params: Record<string, any> = {
+    admin_order_id: orderId,
+  };
+  if (plantId) params.plant_id = plantId;
+
+  console.log(`[SalesOrder Delete] DELETE ${baseURL}/orders/${orderId}`, {
+    params,
+    headers,
+  });
+
+  return await axios.delete(`${baseURL}/orders/${orderId}`, {
+    headers,
+    params,
+  });
+}
+
 // ==========================================
 // MAIN SCREEN COMPONENT
 // ==========================================
@@ -193,6 +226,25 @@ export default function SalesOrderScreen() {
 
   const [search, setSearch] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"All" | number>("All");
+
+  // Delete Sales Order State
+  const [deletingOrderId, setDeletingOrderId] = useState<number | null>(null);
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: AlertType;
+    buttons?: AlertButton[];
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const hideAlert = useCallback(() => {
+    setAlertConfig((prev) => ({ ...prev, visible: false }));
+  }, []);
 
   const handleBack = useCallback(() => {
     router.replace("/more" as any);
@@ -419,6 +471,71 @@ export default function SalesOrderScreen() {
     return false;
   };
 
+  const confirmDeleteOrder = useCallback(
+    async (item: SalesOrderItem) => {
+      hideAlert();
+      setDeletingOrderId(item.id);
+      try {
+        const targetPlantId =
+          plant_id ?? user?.default_plant_id ?? (user as any)?.plant_id ?? null;
+        const res = await deleteSalesOrderApi(item.id, token, targetPlantId);
+        const successMsg =
+          res.data?.message || "Sales Order deleted successfully.";
+        setOrders((prev) => prev.filter((o) => o.id !== item.id));
+        setAlertConfig({
+          visible: true,
+          title: "Deleted",
+          message: successMsg,
+          type: "success",
+          buttons: [{ text: "OK", onPress: hideAlert }],
+        });
+        fetchOrders(false);
+      } catch (err: any) {
+        const errMsg = formatSubmissionError(err, "Failed to delete sales order.");
+        setAlertConfig({
+          visible: true,
+          title: "Delete Failed",
+          message: errMsg,
+          type: "error",
+          buttons: [{ text: "OK", onPress: hideAlert }],
+        });
+      } finally {
+        setDeletingOrderId(null);
+      }
+    },
+    [hideAlert, token, plant_id, user, fetchOrders],
+  );
+
+  const handlePromptDeleteOrder = useCallback(
+    (item: SalesOrderItem) => {
+      const displayFullNumber =
+        item.full_number ||
+        (item.prefix && item.order_no
+          ? `${item.prefix}${item.order_no}`
+          : item.order_no || `SO #${item.id}`);
+
+      setAlertConfig({
+        visible: true,
+        title: "Delete Sales Order",
+        message: `Are you sure you want to delete sales order "${displayFullNumber}"? This action cannot be undone.`,
+        type: "warning",
+        buttons: [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: hideAlert,
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => confirmDeleteOrder(item),
+          },
+        ],
+      });
+    },
+    [hideAlert, confirmDeleteOrder],
+  );
+
   const handleEditPress = (order: SalesOrderItem) => {
     const orderedM3 =
       order.progress?.ordered_m3 ?? Number(order.total_qty ?? 0);
@@ -486,6 +603,10 @@ export default function SalesOrderScreen() {
       "Mix Not Specified";
 
     const showEditBtn = canEditOrder(item.status, orderedM3, remainingM3);
+    const isScheduled =
+      Number(item.status) === 1 ||
+      (statusMeta.label || "").toLowerCase().includes("schedule");
+    const canDeleteOrder = isScheduled;
 
     return (
       <View style={styles.orderCard}>
@@ -691,17 +812,38 @@ export default function SalesOrderScreen() {
             ) : null}
           </View>
 
-          {/* Edit Button */}
-          {showEditBtn && (
-            <TouchableOpacity
-              style={styles.actionEditBtn}
-              onPress={() => handleEditPress(item)}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="create-outline" size={14} color="#2563EB" />
-              <Text style={styles.actionEditText}>Edit</Text>
-            </TouchableOpacity>
-          )}
+          <View style={styles.cardFooterActions}>
+            {/* Edit Button */}
+            {showEditBtn && (
+              <TouchableOpacity
+                style={styles.actionEditBtn}
+                onPress={() => handleEditPress(item)}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="create-outline" size={14} color="#2563EB" />
+                <Text style={styles.actionEditText}>Edit</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Delete Button (Scheduled status) */}
+            {canDeleteOrder && (
+              <TouchableOpacity
+                style={styles.actionDeleteBtn}
+                onPress={() => handlePromptDeleteOrder(item)}
+                activeOpacity={0.75}
+                disabled={deletingOrderId === item.id}
+              >
+                {deletingOrderId === item.id ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                    <Text style={styles.actionDeleteText}>Delete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -946,6 +1088,16 @@ export default function SalesOrderScreen() {
         >
           <Ionicons name="add" size={28} color="#FFFFFF" />
         </TouchableOpacity>
+
+        {/* Animated Custom Alert Modal */}
+        <CustomAlertModal
+          visible={alertConfig.visible}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          buttons={alertConfig.buttons}
+          onClose={hideAlert}
+        />
       </View>
     </SafeAreaView>
   );
@@ -1378,6 +1530,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: "#2563EB",
+  },
+  cardFooterActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  actionDeleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  actionDeleteText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#DC2626",
   },
 
   // Error Banner

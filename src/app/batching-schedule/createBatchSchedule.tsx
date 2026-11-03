@@ -1,11 +1,11 @@
 import { baseURL } from "@/components/baseUrl/baseUrlAPI";
+import { AppHeader } from "@/components/ui/app-header";
 import {
   AlertButton,
   AlertType,
   CustomAlertModal,
   formatSubmissionError,
 } from "@/components/ui/custom-alert-modal";
-import { AppHeader } from "@/components/ui/app-header";
 import {
   setDropdowns,
   setDropdownsError,
@@ -26,12 +26,18 @@ import {
 } from "@expo/vector-icons";
 import axios from "axios";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -121,9 +127,7 @@ export function formatOrderRow(
 
   if ((!custName || custName.toLowerCase() === "customer") && customersList) {
     const custId =
-      order.customer_id ||
-      (order as any).patron_id ||
-      order.customer?.id;
+      order.customer_id || (order as any).patron_id || order.customer?.id;
     if (custId) {
       const match = customersList.find(
         (c: any) => Number(c.id) === Number(custId),
@@ -284,6 +288,70 @@ function formatToIsoWithoutZ(date: Date): string {
 // ==========================================
 
 export default function CreateBatchScheduleScreen() {
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardPadding, setKeyboardPadding] = useState<number>(0);
+  const volumeSectionYRef = useRef<number>(0);
+  const notesSectionYRef = useRef<number>(0);
+  const activeInputRef = useRef<string | null>(null);
+
+  const scrollToTarget = useCallback((target?: string | null, delay = 100) => {
+    const current = target ?? activeInputRef.current;
+    if (!current) return;
+
+    setTimeout(() => {
+      if (!scrollViewRef.current) return;
+
+      if (current === "notes") {
+        scrollViewRef.current.scrollToEnd({ animated: true });
+      } else if (current === "volume") {
+        const targetY = Math.max(0, volumeSectionYRef.current - 24);
+        scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+      }
+    }, delay);
+  }, []);
+
+  const handleInputFocus = useCallback(
+    (target: string) => {
+      activeInputRef.current = target;
+      scrollToTarget(target, Platform.OS === "ios" ? 100 : 150);
+    },
+    [scrollToTarget],
+  );
+
+  const handleInputBlur = useCallback(() => {
+    activeInputRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const onKeyboardShow = (e: any) => {
+      const height = e?.endCoordinates?.height || 0;
+      setKeyboardPadding(height);
+      if (activeInputRef.current) {
+        scrollToTarget(
+          activeInputRef.current,
+          Platform.OS === "ios" ? 50 : 100,
+        );
+      }
+    };
+
+    const onKeyboardHide = () => {
+      setKeyboardPadding(0);
+      activeInputRef.current = null;
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onKeyboardShow);
+    const hideSub = Keyboard.addListener(hideEvent, onKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scrollToTarget]);
   const router = useRouter();
   const dispatch = useDispatch();
 
@@ -292,9 +360,11 @@ export default function CreateBatchScheduleScreen() {
   );
 
   // Redux: cached dropdowns from /dropdowns
-  const { pumpTypes, isLoaded: dropdownsLoaded, customers: reduxCustomers } = useSelector(
-    (state: RootState) => state.dropdowns,
-  );
+  const {
+    pumpTypes,
+    isLoaded: dropdownsLoaded,
+    customers: reduxCustomers,
+  } = useSelector((state: RootState) => state.dropdowns);
 
   // Redux: cached sites & mix designs
   const cachedSites = useSelector(
@@ -1025,12 +1095,23 @@ export default function CreateBatchScheduleScreen() {
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior={Platform.OS === "ios" ? "padding" : undefined}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
           >
             <ScrollView
+              ref={scrollViewRef}
               style={styles.scrollContainer}
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[
+                styles.scrollContent,
+                {
+                  paddingBottom:
+                    keyboardPadding > 0
+                      ? keyboardPadding + 16
+                      : 90,
+                },
+              ]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
             >
               {/* SECTION 1: SALES ORDER (Format: SO/2627/0023 - kavi , KK nagar) */}
               <View style={[styles.sectionCard, styles.highlightCard]}>
@@ -1094,7 +1175,11 @@ export default function CreateBatchScheduleScreen() {
                   style={styles.datePickerButton}
                   onPress={() => {
                     const parts = scheduleDate.split("-").map(Number);
-                    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                    if (
+                      parts.length === 3 &&
+                      !isNaN(parts[0]) &&
+                      !isNaN(parts[1])
+                    ) {
                       setSchedYear(parts[0]);
                       setSchedMonth(parts[1] - 1);
                     } else {
@@ -1238,7 +1323,12 @@ export default function CreateBatchScheduleScreen() {
               </View>
 
               {/* SECTION 5: DECIMAL VOLUMES */}
-              <View style={styles.sectionCard}>
+              <View
+                style={styles.sectionCard}
+                onLayout={(e) => {
+                  volumeSectionYRef.current = e.nativeEvent.layout.y;
+                }}
+              >
                 <View style={styles.sectionHeader}>
                   <MaterialCommunityIcons
                     name="cube-send"
@@ -1262,6 +1352,8 @@ export default function CreateBatchScheduleScreen() {
                         keyboardType="decimal-pad"
                         value={qtyM3}
                         onChangeText={setQtyM3}
+                        onFocus={() => handleInputFocus("volume")}
+                        onBlur={handleInputBlur}
                         placeholder="5.0"
                         placeholderTextColor="#94A3B8"
                       />
@@ -1274,7 +1366,11 @@ export default function CreateBatchScheduleScreen() {
                     <View style={styles.fieldLabelRow}>
                       <Text style={styles.fieldLabel}>Order Volume</Text>
                       <View style={styles.readOnlyBadge}>
-                        <Ionicons name="lock-closed" size={10} color="#64748B" />
+                        <Ionicons
+                          name="lock-closed"
+                          size={10}
+                          color="#64748B"
+                        />
                         <Text style={styles.readOnlyBadgeText}>From SO</Text>
                       </View>
                     </View>
@@ -1452,7 +1548,12 @@ export default function CreateBatchScheduleScreen() {
               </View>
 
               {/* SECTION 7: NOTES */}
-              <View style={styles.sectionCard}>
+              <View
+                style={styles.sectionCard}
+                onLayout={(e) => {
+                  notesSectionYRef.current = e.nativeEvent.layout.y;
+                }}
+              >
                 <View style={styles.sectionHeader}>
                   <MaterialCommunityIcons
                     name="note-text-outline"
@@ -1467,6 +1568,8 @@ export default function CreateBatchScheduleScreen() {
                     style={styles.textArea}
                     value={notes}
                     onChangeText={setNotes}
+                    onFocus={() => handleInputFocus("notes")}
+                    onBlur={handleInputBlur}
                     placeholder="Requested by sales executive"
                     placeholderTextColor="#94A3B8"
                     multiline
@@ -1474,43 +1577,41 @@ export default function CreateBatchScheduleScreen() {
                   />
                 </View>
               </View>
-
-              <View style={{ height: 100 }} />
             </ScrollView>
-          </KeyboardAvoidingView>
 
-          {/* BOTTOM ACTION BAR */}
-          <View style={styles.bottomBar}>
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                isSubmitting && styles.submitButtonDisabled,
-              ]}
-              onPress={handleSubmit}
-              disabled={isSubmitting}
-              activeOpacity={0.85}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator
-                  size="small"
-                  color="#FFFFFF"
-                  style={{ marginRight: 8 }}
-                />
-              ) : (
-                <MaterialCommunityIcons
-                  name="calendar-check"
-                  size={20}
-                  color="#FFFFFF"
-                  style={{ marginRight: 8 }}
-                />
-              )}
-              <Text style={styles.submitButtonText}>
-                {isSubmitting
-                  ? "Creating Batch Schedule..."
-                  : "Save Batch Schedule"}
-              </Text>
-            </TouchableOpacity>
-          </View>
+            {/* BOTTOM ACTION BAR */}
+            <View style={styles.bottomBar}>
+              <TouchableOpacity
+                style={[
+                  styles.submitButton,
+                  isSubmitting && styles.submitButtonDisabled,
+                ]}
+                onPress={handleSubmit}
+                disabled={isSubmitting}
+                activeOpacity={0.85}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator
+                    size="small"
+                    color="#FFFFFF"
+                    style={{ marginRight: 8 }}
+                  />
+                ) : (
+                  <MaterialCommunityIcons
+                    name="calendar-check"
+                    size={20}
+                    color="#FFFFFF"
+                    style={{ marginRight: 8 }}
+                  />
+                )}
+                <Text style={styles.submitButtonText}>
+                  {isSubmitting
+                    ? "Creating Batch Schedule..."
+                    : "Save Batch Schedule"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
         </>
       )}
 
@@ -1655,10 +1756,18 @@ export default function CreateBatchScheduleScreen() {
                   setSchedMonth(now.getMonth());
                   setSchedYear(now.getFullYear());
                   const newBatch = new Date(batchingDateTime.getTime());
-                  newBatch.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
+                  newBatch.setFullYear(
+                    now.getFullYear(),
+                    now.getMonth(),
+                    now.getDate(),
+                  );
                   setBatchingDateTime(newBatch);
                   const newDispatch = new Date(dispatchDateTime.getTime());
-                  newDispatch.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
+                  newDispatch.setFullYear(
+                    now.getFullYear(),
+                    now.getMonth(),
+                    now.getDate(),
+                  );
                   setDispatchDateTime(newDispatch);
                   setScheduleDatePickerVisible(false);
                 }}
@@ -1675,10 +1784,18 @@ export default function CreateBatchScheduleScreen() {
                   setSchedMonth(tom.getMonth());
                   setSchedYear(tom.getFullYear());
                   const newBatch = new Date(batchingDateTime.getTime());
-                  newBatch.setFullYear(tom.getFullYear(), tom.getMonth(), tom.getDate());
+                  newBatch.setFullYear(
+                    tom.getFullYear(),
+                    tom.getMonth(),
+                    tom.getDate(),
+                  );
                   setBatchingDateTime(newBatch);
                   const newDispatch = new Date(dispatchDateTime.getTime());
-                  newDispatch.setFullYear(tom.getFullYear(), tom.getMonth(), tom.getDate());
+                  newDispatch.setFullYear(
+                    tom.getFullYear(),
+                    tom.getMonth(),
+                    tom.getDate(),
+                  );
                   setDispatchDateTime(newDispatch);
                   setScheduleDatePickerVisible(false);
                 }}
@@ -1695,10 +1812,18 @@ export default function CreateBatchScheduleScreen() {
                   setSchedMonth(d2.getMonth());
                   setSchedYear(d2.getFullYear());
                   const newBatch = new Date(batchingDateTime.getTime());
-                  newBatch.setFullYear(d2.getFullYear(), d2.getMonth(), d2.getDate());
+                  newBatch.setFullYear(
+                    d2.getFullYear(),
+                    d2.getMonth(),
+                    d2.getDate(),
+                  );
                   setBatchingDateTime(newBatch);
                   const newDispatch = new Date(dispatchDateTime.getTime());
-                  newDispatch.setFullYear(d2.getFullYear(), d2.getMonth(), d2.getDate());
+                  newDispatch.setFullYear(
+                    d2.getFullYear(),
+                    d2.getMonth(),
+                    d2.getDate(),
+                  );
                   setDispatchDateTime(newDispatch);
                   setScheduleDatePickerVisible(false);
                 }}

@@ -23,6 +23,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSelector } from "react-redux";
+import {
+  CustomAlertModal,
+  AlertType,
+  AlertButton,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 
 export interface QuotationPatron {
   id: number;
@@ -364,12 +370,45 @@ async function convertQuotationToCustomerPOApi(
   );
 }
 
+export function deleteQuotationAPI(
+  quotationId: number | string,
+  token?: string | null,
+  plantId?: number | null,
+) {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const params: Record<string, any> = {
+    quotation_id: quotationId,
+  };
+  if (plantId) {
+    params.plant_id = plantId;
+  }
+
+  console.log(`[Quotation Delete] DELETE ${baseURL}/quotations/${quotationId}`, {
+    params,
+    headers,
+  });
+
+  return axios.delete(`${baseURL}/quotations/${quotationId}`, {
+    params,
+    headers,
+  });
+}
+
 interface QuotationCardProps {
   item: QuotationItem;
   onOpenView: (item: QuotationItem) => void;
   onOpenEdit: (item: QuotationItem) => void;
   onConvertToCustomerPO: (item: QuotationItem) => void;
   isConverting?: boolean;
+  onDeleteQuotation?: (item: QuotationItem) => void;
+  isDeleting?: boolean;
 }
 
 const QuotationCard = React.memo(function QuotationCard({
@@ -378,11 +417,14 @@ const QuotationCard = React.memo(function QuotationCard({
   onOpenEdit,
   onConvertToCustomerPO,
   isConverting = false,
+  onDeleteQuotation,
+  isDeleting = false,
 }: QuotationCardProps) {
   const statusCode = normalizeQuotationStatus(item.status);
   const isApproved = statusCode === 2;
   const isSent = statusCode === 1;
   const canEdit = statusCode === 0;
+  const canDelete = statusCode === 0 || statusCode === 1;
   const isPOConverted =
     Number(item.is_customer_po) === 1 ||
     String(item.is_customer_po) === "1" ||
@@ -625,6 +667,24 @@ const QuotationCard = React.memo(function QuotationCard({
             </TouchableOpacity>
           )}
 
+          {canDelete && onDeleteQuotation && (
+            <TouchableOpacity
+              style={styles.actionDeleteBtn}
+              onPress={() => onDeleteQuotation(item)}
+              activeOpacity={0.7}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <ActivityIndicator size="small" color="#DC2626" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={13} color={"#DC2626"} />
+                  <Text style={styles.actionDeleteText}>Delete</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
           {isApproved && !isPOConverted && (
             <TouchableOpacity
               style={styles.actionConvertBtn}
@@ -697,6 +757,25 @@ export default function QuotationScreen({
   const [rejectModalVisible, setRejectModalVisible] = useState<boolean>(false);
   const [rejectTargetItem, setRejectTargetItem] = useState<QuotationItem | null>(null);
   const [rejectComment, setRejectComment] = useState<string>("Rejected");
+
+  // Delete Quotation State
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: AlertType;
+    buttons?: AlertButton[];
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const hideAlert = useCallback(() => {
+    setAlertConfig((prev) => ({ ...prev, visible: false }));
+  }, []);
 
   const isMountedRef = useRef<boolean>(false);
 
@@ -1257,6 +1336,74 @@ export default function QuotationScreen({
     [token, plant_id, user, updateQuotationInState, loadQuotations],
   );
 
+  const confirmDeleteQuotation = useCallback(
+    async (item: QuotationItem) => {
+      hideAlert();
+      setDeletingId(item.id);
+      try {
+        const targetPlantId =
+          plant_id ?? user?.default_plant_id ?? (user as any)?.plant_id ?? null;
+        const res = await deleteQuotationAPI(item.id, token, targetPlantId);
+        const successMsg = res.data?.message || "Quotation deleted.";
+        setQuotations((prev) => prev.filter((q) => q.id !== item.id));
+        setAlertConfig({
+          visible: true,
+          title: "Deleted",
+          message: successMsg,
+          type: "success",
+          buttons: [
+            {
+              text: "OK",
+              onPress: hideAlert,
+            },
+          ],
+        });
+        loadQuotations(false, true);
+      } catch (err: any) {
+        const errMsg = formatSubmissionError(err, "Failed to delete quotation.");
+        setAlertConfig({
+          visible: true,
+          title: "Delete Failed",
+          message: errMsg,
+          type: "error",
+          buttons: [
+            {
+              text: "OK",
+              onPress: hideAlert,
+            },
+          ],
+        });
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [hideAlert, token, plant_id, user, loadQuotations],
+  );
+
+  const handlePromptDelete = useCallback(
+    (item: QuotationItem) => {
+      setAlertConfig({
+        visible: true,
+        title: "Delete Quotation",
+        message: `Are you sure you want to delete quotation "${item.reference || `#${item.id}`}"? This action cannot be undone.`,
+        type: "warning",
+        buttons: [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: hideAlert,
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => confirmDeleteQuotation(item),
+          },
+        ],
+      });
+    },
+    [hideAlert, confirmDeleteQuotation],
+  );
+
   const renderQuotationCard = useCallback(
     ({ item }: { item: QuotationItem }) => {
       return (
@@ -1266,10 +1413,19 @@ export default function QuotationScreen({
           onOpenEdit={handleOpenEdit}
           onConvertToCustomerPO={handleConvertToCustomerPO}
           isConverting={convertingId === String(item.id)}
+          onDeleteQuotation={handlePromptDelete}
+          isDeleting={deletingId === item.id}
         />
       );
     },
-    [handleOpenView, handleOpenEdit, handleConvertToCustomerPO, convertingId],
+    [
+      handleOpenView,
+      handleOpenEdit,
+      handleConvertToCustomerPO,
+      convertingId,
+      handlePromptDelete,
+      deletingId,
+    ],
   );
 
   const keyExtractor = useCallback(
@@ -2020,6 +2176,16 @@ export default function QuotationScreen({
           </View>
         </View>
       </Modal>
+
+      {/* Animated Custom Alert Modal */}
+      <CustomAlertModal
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+        onClose={hideAlert}
+      />
     </SafeAreaView>
   );
 }
@@ -2480,6 +2646,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: "#047857",
+  },
+  actionDeleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    gap: 4,
+  },
+  actionDeleteText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#DC2626",
   },
   actionConvertedBtn: {
     flexDirection: "row",

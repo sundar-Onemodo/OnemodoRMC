@@ -26,6 +26,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDispatch, useSelector } from "react-redux";
+import {
+  CustomAlertModal,
+  AlertType,
+  AlertButton,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 
 // ==========================================
 // TYPES & INTERFACES (Based on API response)
@@ -121,6 +127,35 @@ async function fetchLeadsApi(
     headers,
     params,
     timeout: 25000,
+  });
+}
+
+export async function deleteLeadApi(
+  leadsId: number | string,
+  token?: string | null,
+  plantId?: number | null,
+) {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const params: Record<string, any> = {
+    leads_id: leadsId,
+  };
+  if (plantId !== null && plantId !== undefined) {
+    params.plant_id = String(plantId);
+  }
+
+  console.log(`[Lead Delete] DELETE ${baseURL}/leads/${leadsId}`, {
+    params,
+    headers,
+  });
+
+  return await axios.delete(`${baseURL}/leads/${leadsId}`, {
+    headers,
+    params,
   });
 }
 
@@ -475,6 +510,87 @@ export default function LeadScreen() {
     useState<string>("Reject this");
   const [isSubmittingUnqualified, setIsSubmittingUnqualified] =
     useState<boolean>(false);
+
+  // Delete Lead State
+  const [deletingLeadId, setDeletingLeadId] = useState<number | null>(null);
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: AlertType;
+    buttons?: AlertButton[];
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const hideAlert = useCallback(() => {
+    setAlertConfig((prev) => ({ ...prev, visible: false }));
+  }, []);
+
+  const confirmDeleteLead = useCallback(
+    async (item: LeadItem) => {
+      hideAlert();
+      setDeletingLeadId(item.id);
+      try {
+        const res = await deleteLeadApi(item.id, token, plant_id);
+        const successMsg = res.data?.message || "Lead deleted successfully.";
+        setLeads((prev) => prev.filter((l) => l.id !== item.id));
+        setAlertConfig({
+          visible: true,
+          title: "Deleted",
+          message: successMsg,
+          type: "success",
+          buttons: [{ text: "OK", onPress: hideAlert }],
+        });
+        handleManualRefresh(false);
+      } catch (err: any) {
+        const errMsg = formatSubmissionError(err, "Failed to delete lead.");
+        setAlertConfig({
+          visible: true,
+          title: "Delete Failed",
+          message: errMsg,
+          type: "error",
+          buttons: [{ text: "OK", onPress: hideAlert }],
+        });
+      } finally {
+        setDeletingLeadId(null);
+      }
+    },
+    [hideAlert, token, plant_id, handleManualRefresh],
+  );
+
+  const handlePromptDeleteLead = useCallback(
+    (item: LeadItem) => {
+      const leadLabel =
+        item.client_name ||
+        item.project_name ||
+        item.company_name ||
+        `Lead #${item.id}`;
+
+      setAlertConfig({
+        visible: true,
+        title: "Delete Lead",
+        message: `Are you sure you want to delete lead "${leadLabel}"? This action cannot be undone.`,
+        type: "warning",
+        buttons: [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: hideAlert,
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => confirmDeleteLead(item),
+          },
+        ],
+      });
+    },
+    [hideAlert, confirmDeleteLead],
+  );
 
   const handleOpenStatusPicker = (lead: LeadItem) => {
     const s = (lead.status || "").toLowerCase().trim();
@@ -1250,6 +1366,34 @@ export default function LeadScreen() {
               </TouchableOpacity>
             )}
 
+            {(() => {
+              const statusLower = (item.status || "").toLowerCase().trim();
+              const canDeleteLead =
+                statusLower === "new" ||
+                statusLower === "contacted" ||
+                statusLower === "unqualified";
+
+              if (!canDeleteLead) return null;
+
+              return (
+                <TouchableOpacity
+                  style={styles.actionDeleteBtn}
+                  onPress={() => handlePromptDeleteLead(item)}
+                  activeOpacity={0.7}
+                  disabled={deletingLeadId === item.id}
+                >
+                  {deletingLeadId === item.id ? (
+                    <ActivityIndicator size="small" color="#DC2626" />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                      <Text style={styles.actionDeleteText}>Delete</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              );
+            })()}
+
             {item.email ? (
               <TouchableOpacity
                 style={styles.actionEmailBtn}
@@ -1620,6 +1764,15 @@ export default function LeadScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* Animated Custom Alert Modal */}
+      <CustomAlertModal
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+        onClose={hideAlert}
+      />
     </SafeAreaView>
   );
 }
@@ -2285,6 +2438,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: "#0F172A",
+  },
+  actionDeleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    gap: 4,
+  },
+  actionDeleteText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#DC2626",
   },
   actionCallBtn: {
     flexDirection: "row",

@@ -1,7 +1,8 @@
 import React, { createContext, ReactNode, useContext, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { resetRmcAuth } from '@/store/authSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { RootState } from '@/store/store';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -15,12 +16,15 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const reduxToken = useSelector((state: RootState) => state.auth?.token);
+  const [localAuth, setLocalAuth] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const dispatch = useDispatch();
 
+  const isAuthenticated = Boolean(reduxToken || localAuth);
+
   const login = () => {
-    setIsAuthenticated(true);
+    setLocalAuth(true);
   };
 
   const logout = () => {
@@ -29,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Failed to remove user_rmc from AsyncStorage:', e);
     });
     dispatch(resetRmcAuth());
-    setIsAuthenticated(false);
+    setLocalAuth(false);
     setIsDrawerOpen(false);
   };
 

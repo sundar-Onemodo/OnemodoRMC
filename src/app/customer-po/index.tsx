@@ -25,6 +25,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDispatch, useSelector } from "react-redux";
+import {
+  CustomAlertModal,
+  AlertType,
+  AlertButton,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 
 export interface CustomerPOLineItem {
   id: number;
@@ -70,6 +76,33 @@ export interface CustomerPOItem {
   };
   items?: CustomerPOLineItem[];
   sales_orders?: any[];
+}
+
+export async function deleteCustomerPOApi(
+  poId: number | string,
+  token?: string | null,
+  plantId?: number | null,
+) {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const params: Record<string, any> = {
+    admin_delete_po_id: poId,
+  };
+  if (plantId) params.plant_id = plantId;
+
+  console.log(`[CustomerPO Delete] DELETE ${baseURL}/customer-pos/${poId}`, {
+    params,
+    headers,
+  });
+
+  return await axios.delete(`${baseURL}/customer-pos/${poId}`, {
+    headers,
+    params,
+  });
 }
 
 export const formatCurrency = (
@@ -219,6 +252,25 @@ export default function CustomerPOScreen() {
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
   const [updatingPoId, setUpdatingPoId] = useState<number | null>(null);
 
+  // Delete PO State
+  const [deletingPoId, setDeletingPoId] = useState<number | null>(null);
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: AlertType;
+    buttons?: AlertButton[];
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const hideAlert = useCallback(() => {
+    setAlertConfig((prev) => ({ ...prev, visible: false }));
+  }, []);
+
   // Generate Sales Order Modal States
   const [generateModalVisible, setGenerateModalVisible] =
     useState<boolean>(false);
@@ -252,6 +304,64 @@ export default function CustomerPOScreen() {
     }
     return list;
   }, [pumps]);
+
+  const confirmDeletePO = useCallback(
+    async (item: CustomerPOItem) => {
+      hideAlert();
+      setDeletingPoId(item.id);
+      try {
+        const targetPlantId =
+          plant_id ?? user?.default_plant_id ?? (user as any)?.plant_id ?? null;
+        const res = await deleteCustomerPOApi(item.id, token, targetPlantId);
+        const successMsg = res.data?.message || "Customer PO deleted successfully.";
+        setPoList((prev) => prev.filter((p) => p.id !== item.id));
+        setAlertConfig({
+          visible: true,
+          title: "Deleted",
+          message: successMsg,
+          type: "success",
+          buttons: [{ text: "OK", onPress: hideAlert }],
+        });
+        fetchCustomerPOs(false);
+      } catch (err: any) {
+        const errMsg = formatSubmissionError(err, "Failed to delete Customer PO.");
+        setAlertConfig({
+          visible: true,
+          title: "Delete Failed",
+          message: errMsg,
+          type: "error",
+          buttons: [{ text: "OK", onPress: hideAlert }],
+        });
+      } finally {
+        setDeletingPoId(null);
+      }
+    },
+    [hideAlert, token, plant_id, user, fetchCustomerPOs],
+  );
+
+  const handlePromptDeletePO = useCallback(
+    (item: CustomerPOItem) => {
+      setAlertConfig({
+        visible: true,
+        title: "Delete Customer PO",
+        message: `Are you sure you want to delete Customer PO "${item.reference || `#${item.id}`}"? This action cannot be undone.`,
+        type: "warning",
+        buttons: [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: hideAlert,
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => confirmDeletePO(item),
+          },
+        ],
+      });
+    },
+    [hideAlert, confirmDeletePO],
+  );
 
   const handleOpenGenerateSO = (po: CustomerPOItem) => {
     console.log("[CustomerPO] Opening Generate SO for PO:", {
@@ -1214,6 +1324,43 @@ export default function CustomerPOScreen() {
                   <Text style={styles.editBtnText}>Edit</Text>
                 </TouchableOpacity>
               )}
+
+            {/* Action Button: Delete (Draft, or Confirmed with empty sales_orders) */}
+            {(() => {
+              const soList =
+                item.sales_orders ||
+                (item as any)["sales-orders"] ||
+                (item as any).salesOrders ||
+                [];
+              const hasNoSalesOrders = !Array.isArray(soList) || soList.length === 0;
+              const isDraft =
+                Number(item.status) === 0 ||
+                (statusMeta.label || "").toLowerCase().includes("draft");
+              const isConfirmed =
+                Number(item.status) === 1 ||
+                (statusMeta.label || "").toLowerCase().includes("confirmed");
+              const canDeletePO = isDraft || (isConfirmed && hasNoSalesOrders);
+
+              if (!canDeletePO) return null;
+
+              return (
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={() => handlePromptDeletePO(item)}
+                  activeOpacity={0.8}
+                  disabled={deletingPoId === item.id}
+                >
+                  {deletingPoId === item.id ? (
+                    <ActivityIndicator size="small" color="#DC2626" />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                      <Text style={styles.deleteBtnText}>Delete</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              );
+            })()}
           </View>
         </View>
       </View>
@@ -1959,6 +2106,16 @@ export default function CustomerPOScreen() {
             </View>
           </View>
         </Modal>
+
+        {/* Animated Custom Alert Modal */}
+        <CustomAlertModal
+          visible={alertConfig.visible}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          buttons={alertConfig.buttons}
+          onClose={hideAlert}
+        />
       </View>
     </SafeAreaView>
   );
@@ -2477,6 +2634,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: "#2563EB",
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    gap: 4,
+  },
+  deleteBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#DC2626",
   },
   emptyContainer: {
     alignItems: "center",

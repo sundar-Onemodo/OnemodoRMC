@@ -26,6 +26,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSelector } from "react-redux";
+import {
+  CustomAlertModal,
+  AlertType,
+  AlertButton,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 
 export interface BatchScheduleItem {
   id: number;
@@ -285,6 +291,38 @@ export const STATUS_OPTIONS = [
 ];
 
 
+export async function deleteBatchScheduleApi(
+  schedulesId: number | string,
+  token?: string | null,
+  plantId?: number | null,
+) {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (plantId !== null && plantId !== undefined) {
+    headers["X-Plant-Id"] = String(plantId);
+  }
+
+  const params: Record<string, any> = {
+    schedules_id: schedulesId,
+  };
+  if (plantId !== null && plantId !== undefined) {
+    params.plant_id = plantId;
+  }
+
+  console.log(`[BatchSchedule Delete] DELETE ${baseURL}/batch-schedules/${schedulesId}`, {
+    params,
+    headers,
+  });
+
+  return await axios.delete(`${baseURL}/batch-schedules/${schedulesId}`, {
+    headers,
+    params,
+  });
+}
+
 export default function BatchingScheduleScreen() {
   const router = useRouter();
   const { token, plant_id, plant_name } = useSelector(
@@ -297,6 +335,87 @@ export default function BatchingScheduleScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Delete Schedule State
+  const [deletingScheduleId, setDeletingScheduleId] = useState<number | null>(null);
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    type: AlertType;
+    buttons?: AlertButton[];
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const hideAlert = useCallback(() => {
+    setAlertConfig((prev) => ({ ...prev, visible: false }));
+  }, []);
+
+  const confirmDeleteSchedule = useCallback(
+    async (item: BatchScheduleItem) => {
+      hideAlert();
+      setDeletingScheduleId(item.id);
+      try {
+        const res = await deleteBatchScheduleApi(item.id, token, plant_id);
+        const successMsg =
+          res.data?.message || "Batch schedule deleted successfully.";
+        setSchedules((prev) => prev.filter((s) => s.id !== item.id));
+        setAlertConfig({
+          visible: true,
+          title: "Deleted",
+          message: successMsg,
+          type: "success",
+          buttons: [{ text: "OK", onPress: hideAlert }],
+        });
+        loadSchedules(false);
+      } catch (err: any) {
+        const errMsg = formatSubmissionError(err, "Failed to delete batch schedule.");
+        setAlertConfig({
+          visible: true,
+          title: "Delete Failed",
+          message: errMsg,
+          type: "error",
+          buttons: [{ text: "OK", onPress: hideAlert }],
+        });
+      } finally {
+        setDeletingScheduleId(null);
+      }
+    },
+    [hideAlert, token, plant_id, loadSchedules],
+  );
+
+  const handlePromptDeleteSchedule = useCallback(
+    (item: BatchScheduleItem) => {
+      const scheduleLabel =
+        item.pour_reference ||
+        (item.order ? formatOrderRow(item.order) : null) ||
+        `Schedule #${item.id}`;
+
+      setAlertConfig({
+        visible: true,
+        title: "Delete Batch Schedule",
+        message: `Are you sure you want to delete batch schedule "${scheduleLabel}"? This action cannot be undone.`,
+        type: "warning",
+        buttons: [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: hideAlert,
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => confirmDeleteSchedule(item),
+          },
+        ],
+      });
+    },
+    [hideAlert, confirmDeleteSchedule],
+  );
 
   const isFetchingRef = useRef(false);
 
@@ -679,39 +798,54 @@ export default function BatchingScheduleScreen() {
           </View>
         </View>
 
-        {/* Card Footer: Notes on Left & Edit Button in Bottom Right Corner (like quotation list screen) */}
-        {(Boolean(item.notes) ||
-          (item.status || "").toLowerCase().trim() === "scheduled") && (
-          <View style={styles.cardFooter}>
-            <View style={styles.footerLeft}>
-              {item.notes ? (
-                <View style={styles.notesContainer}>
-                  <Ionicons
-                    name="information-circle-outline"
-                    size={13}
-                    color="#64748B"
-                  />
-                  <Text style={styles.notesText} numberOfLines={1}>
-                    {item.notes}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.footerRight}>
-              {(item.status || "").toLowerCase().trim() === "scheduled" && (
-                <TouchableOpacity
-                  style={styles.actionEditBtn}
-                  onPress={() => handleEditSchedule(item)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="create-outline" size={13} color="#2563EB" />
-                  <Text style={styles.actionEditText}>Edit</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+        {/* Card Footer: Notes on Left & Action Buttons (Edit & Delete) on Right */}
+        <View style={styles.cardFooter}>
+          <View style={styles.footerLeft}>
+            {item.notes ? (
+              <View style={styles.notesContainer}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={13}
+                  color="#64748B"
+                />
+                <Text style={styles.notesText} numberOfLines={1}>
+                  {item.notes}
+                </Text>
+              </View>
+            ) : null}
           </View>
-        )}</View>
+
+          <View style={styles.footerRight}>
+            {(item.status || "").toLowerCase().trim() === "scheduled" && (
+              <TouchableOpacity
+                style={styles.actionEditBtn}
+                onPress={() => handleEditSchedule(item)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={13} color="#2563EB" />
+                <Text style={styles.actionEditText}>Edit</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Delete button: for all status can delete */}
+            <TouchableOpacity
+              style={styles.actionDeleteBtn}
+              onPress={() => handlePromptDeleteSchedule(item)}
+              activeOpacity={0.7}
+              disabled={deletingScheduleId === item.id}
+            >
+              {deletingScheduleId === item.id ? (
+                <ActivityIndicator size="small" color="#DC2626" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={13} color="#DC2626" />
+                  <Text style={styles.actionDeleteText}>Delete</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     );
   };
 
@@ -849,6 +983,15 @@ export default function BatchingScheduleScreen() {
       )}
 
       
+      {/* Animated Custom Alert Modal */}
+      <CustomAlertModal
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        buttons={alertConfig.buttons}
+        onClose={hideAlert}
+      />
     </SafeAreaView>
   );
 }
@@ -1325,6 +1468,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
+    gap: 6,
   },
   actionEditBtn: {
     flexDirection: "row",
@@ -1341,6 +1485,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: "#2563EB",
+  },
+  actionDeleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    gap: 4,
+  },
+  actionDeleteText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#DC2626",
   },
   statusBadgeInteractive: {
     flexDirection: "row",

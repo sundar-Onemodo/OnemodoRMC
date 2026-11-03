@@ -17,12 +17,13 @@ import { RootState } from "@/store/store";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -50,6 +51,8 @@ export interface FormLineItem {
   tax_id: number | null;
   tax_name: string;
   tax_rate: number;
+  concrete_pump?: string | null;
+  pump_rate?: string;
   calculation: LineItemCalculationResult;
 }
 
@@ -432,14 +435,81 @@ export default function EditQuotationScreen({
     setAdjustment(clean);
   };
 
-  const handlePumpRateChange = (val: string) => {
-    let clean = val.replace(/[^0-9.]/g, "");
-    const parts = clean.split(".");
-    if (parts.length > 2) {
-      clean = `${parts[0]}.${parts.slice(1).join("")}`;
-    }
-    setPumpRate(clean);
-  };
+  // Keyboard padding & scroll-to-view
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [keyboardPadding, setKeyboardPadding] = useState<number>(0);
+  const notesYRef = useRef<number>(0);
+  const estimateYRef = useRef<number>(0);
+  const productYRefs = useRef<Record<number, number>>({});
+  const activeInputRef = useRef<string | null>(null);
+
+  const scrollToTarget = useCallback((target?: string | null, delay = 100) => {
+    const current = target ?? activeInputRef.current;
+    if (!current) return;
+
+    setTimeout(() => {
+      if (!scrollViewRef.current) return;
+
+      if (current === "notes") {
+        const targetY = Math.max(0, notesYRef.current - 24);
+        scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+      } else if (current === "adjustment") {
+        scrollViewRef.current.scrollToEnd({ animated: true });
+      } else if (current.startsWith("product_")) {
+        const idx = parseInt(current.replace("product_", ""), 10);
+        const pY = productYRefs.current[idx];
+        if (typeof pY === "number") {
+          scrollViewRef.current.scrollTo({
+            y: Math.max(0, pY - 20),
+            animated: true,
+          });
+        }
+      }
+    }, delay);
+  }, []);
+
+  const handleInputFocus = useCallback(
+    (target: string) => {
+      activeInputRef.current = target;
+      scrollToTarget(target, Platform.OS === "ios" ? 100 : 150);
+    },
+    [scrollToTarget],
+  );
+
+  const handleInputBlur = useCallback(() => {
+    activeInputRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const onKeyboardShow = (e: any) => {
+      const height = e?.endCoordinates?.height || 0;
+      setKeyboardPadding(height);
+      if (activeInputRef.current) {
+        scrollToTarget(
+          activeInputRef.current,
+          Platform.OS === "ios" ? 50 : 100,
+        );
+      }
+    };
+
+    const onKeyboardHide = () => {
+      setKeyboardPadding(0);
+      activeInputRef.current = null;
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onKeyboardShow);
+    const hideSub = Keyboard.addListener(hideEvent, onKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scrollToTarget]);
 
   const handleBack = useCallback(() => {
     if (onBack) {
@@ -470,25 +540,90 @@ export default function EditQuotationScreen({
     }, [handleBack]),
   );
 
-  const [items, setItems] = useState<FormLineItem[]>([
-    {
-      id: "item-1",
-      mix_design_id: null,
-      mix_design_name: "",
-      quantity: "6",
-      rate: "5000",
-      tax_id: null,
-      tax_name: "GST 18% (Sales)",
-      tax_rate: 18,
-      calculation: calculateLineItemTotals({
-        quantity: 6,
-        rate: 5000,
-        pump_rate: 0,
-        taxRate: 18,
-        isTaxInclusive: false,
-      }),
-    },
-  ]);
+  const [items, setItems] = useState<FormLineItem[]>(() => {
+    if (
+      passedQuotation?.items &&
+      Array.isArray(passedQuotation.items) &&
+      passedQuotation.items.length > 0
+    ) {
+      const taxInc = Boolean(passedQuotation.is_tax_inclusive);
+      return passedQuotation.items.map((it: any, idx: number) => {
+        const mix = it.mix_design || {};
+        const tax = it.tax || {};
+        const qty = parseFloat(it.quantity) || 0;
+        const rate = parseFloat(it.rate) || 0;
+        const taxRate = Number(
+          tax.rate ??
+            tax.tax_rate ??
+            (it.tax_amount && qty && rate
+              ? Math.round((parseFloat(it.tax_amount) / (qty * rate)) * 100)
+              : 18),
+        );
+        const itemPump =
+          it.concrete_pump ||
+          it.pump_type ||
+          (passedQuotation as any)?.concrete_pump ||
+          (passedQuotation as any)?.pump_type ||
+          null;
+        const itemPumpRateStr =
+          it.pump_rate !== undefined && it.pump_rate !== null
+            ? String(it.pump_rate)
+            : (passedQuotation as any)?.pump_rate !== undefined &&
+                (passedQuotation as any)?.pump_rate !== null
+              ? String((passedQuotation as any).pump_rate)
+              : "0";
+        const itemPumpRateNum = parseFloat(itemPumpRateStr) || 0;
+
+        return {
+          id: `item-${it.id || idx}`,
+          mix_design_id: it.mix_design_id,
+          mix_design_name: mix.design_name || mix.name || "Concrete Mix",
+          quantity: String(qty),
+          rate: String(rate),
+          tax_id:
+            it.tax_id !== null && it.tax_id !== undefined
+              ? Number(it.tax_id)
+              : null,
+          tax_name:
+            tax.tax_name ||
+            tax.name ||
+            (taxRate > 0 ? `GST ${taxRate}%` : "No Tax (0%)"),
+          tax_rate: taxRate,
+          concrete_pump: itemPump,
+          pump_rate: itemPumpRateStr,
+          calculation: calculateLineItemTotals({
+            quantity: qty,
+            rate: rate,
+            pump_rate: itemPumpRateNum,
+            taxRate: taxRate,
+            isTaxInclusive: taxInc,
+          }),
+        };
+      });
+    }
+
+    return [
+      {
+        id: "item-1",
+        mix_design_id: null,
+        mix_design_name: "",
+        quantity: "6",
+        rate: "5000",
+        tax_id: null,
+        tax_name: "GST 18% (Sales)",
+        tax_rate: 18,
+        concrete_pump: null,
+        pump_rate: "0",
+        calculation: calculateLineItemTotals({
+          quantity: 6,
+          rate: 5000,
+          pump_rate: 0,
+          taxRate: 18,
+          isTaxInclusive: false,
+        }),
+      },
+    ];
+  });
 
   const [loadingDropdowns, setLoadingDropdowns] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -787,6 +922,8 @@ export default function EditQuotationScreen({
                   tax_rate: Number(
                     defaultTax.rate || defaultTax.tax_rate || 18,
                   ),
+                  concrete_pump: null,
+                  pump_rate: "0",
                   calculation: calculateLineItemTotals({
                     quantity: 6,
                     rate: parseFloat(initialRate) || 5000,
@@ -1058,11 +1195,20 @@ export default function EditQuotationScreen({
           }
 
           // 5b. Pump & Adjustment
-          if (quoteData.concrete_pump || quoteData.pump_type) {
-            setConcretePump(quoteData.concrete_pump || quoteData.pump_type);
+          if (quoteData.concrete_pump || quoteData.pump_type || quoteData.items?.[0]?.concrete_pump) {
+            setConcretePump(quoteData.concrete_pump || quoteData.pump_type || quoteData.items?.[0]?.concrete_pump || null);
           }
+          const quotationPumpNum =
+            quoteData.pump_rate !== undefined && quoteData.pump_rate !== null
+              ? parseFloat(quoteData.pump_rate) || 0
+              : quoteData.items?.[0]?.pump_rate !== undefined && quoteData.items?.[0]?.pump_rate !== null
+                ? parseFloat(quoteData.items[0].pump_rate) || 0
+                : parseFloat(pumpRate) || 0;
+
           if (quoteData.pump_rate !== undefined && quoteData.pump_rate !== null) {
             setPumpRate(String(quoteData.pump_rate));
+          } else if (quoteData.items?.[0]?.pump_rate !== undefined && quoteData.items?.[0]?.pump_rate !== null) {
+            setPumpRate(String(quoteData.items[0].pump_rate));
           }
           if (quoteData.adjustment !== undefined && quoteData.adjustment !== null) {
             setAdjustment(
@@ -1087,6 +1233,18 @@ export default function EditQuotationScreen({
                         )
                       : 18),
                 );
+                const itemConcretePump =
+                  it.concrete_pump ||
+                  it.pump_type ||
+                  (idx === 0 ? (quoteData.concrete_pump || quoteData.pump_type || null) : null);
+                const itemPumpRateStr =
+                  it.pump_rate !== undefined && it.pump_rate !== null
+                    ? String(it.pump_rate)
+                    : idx === 0 && quoteData.pump_rate !== undefined && quoteData.pump_rate !== null
+                      ? String(quoteData.pump_rate)
+                      : "0";
+                const itemPumpRate = parseFloat(itemPumpRateStr) || 0;
+
                 return {
                   id: `item-${it.id || idx}`,
                   mix_design_id: it.mix_design_id,
@@ -1103,10 +1261,12 @@ export default function EditQuotationScreen({
                     tax.name ||
                     (taxRate > 0 ? `GST ${taxRate}%` : "No Tax (0%)"),
                   tax_rate: taxRate,
+                  concrete_pump: itemConcretePump,
+                  pump_rate: itemPumpRateStr,
                   calculation: calculateLineItemTotals({
                     quantity: qty,
                     rate: rate,
-                    pump_rate: 0,
+                    pump_rate: itemPumpRate,
                     taxRate: taxRate,
                     isTaxInclusive: taxInc,
                   }),
@@ -1150,16 +1310,19 @@ export default function EditQuotationScreen({
     const nextVal = !isTaxInclusive;
     setIsTaxInclusive(nextVal);
     setItems((prev) =>
-      prev.map((item) => ({
-        ...item,
-        calculation: calculateLineItemTotals({
-          quantity: parseFloat(item.quantity) || 0,
-          rate: parseFloat(item.rate) || 0,
-          pump_rate: 0,
-          taxRate: item.tax_rate || 0,
-          isTaxInclusive: nextVal,
-        }),
-      })),
+      prev.map((item) => {
+        const itemPump = parseFloat(item.pump_rate || "0") || 0;
+        return {
+          ...item,
+          calculation: calculateLineItemTotals({
+            quantity: parseFloat(item.quantity) || 0,
+            rate: parseFloat(item.rate) || 0,
+            pump_rate: itemPump,
+            taxRate: item.tax_rate || 0,
+            isTaxInclusive: nextVal,
+          }),
+        };
+      }),
     );
   };
 
@@ -1172,16 +1335,29 @@ export default function EditQuotationScreen({
       const updated = [...prev];
       const target = { ...updated[index], [field]: value };
 
+      if (field === "pump_rate") {
+        let clean = String(value || "").replace(/[^0-9.]/g, "");
+        const parts = clean.split(".");
+        if (parts.length > 2) {
+          clean = `${parts[0]}.${parts.slice(1).join("")}`;
+        }
+        target.pump_rate = clean;
+      }
+
       const qtyNum =
         parseFloat(field === "quantity" ? value : target.quantity) || 0;
       const rateNum = parseFloat(field === "rate" ? value : target.rate) || 0;
       const taxRateNum =
         field === "tax_rate" ? Number(value) : target.tax_rate || 0;
+      const pumpRateNum =
+        parseFloat(
+          field === "pump_rate" ? target.pump_rate : target.pump_rate || "0",
+        ) || 0;
 
       target.calculation = calculateLineItemTotals({
         quantity: qtyNum,
         rate: rateNum,
-        pump_rate: 0,
+        pump_rate: pumpRateNum,
         taxRate: taxRateNum,
         isTaxInclusive,
       });
@@ -1221,6 +1397,8 @@ export default function EditQuotationScreen({
       tax_rate: defaultTax
         ? Number(defaultTax.rate || defaultTax.tax_rate || 18)
         : 18,
+      concrete_pump: null,
+      pump_rate: "0",
       calculation: calculateLineItemTotals({
         quantity: 6,
         rate: parseFloat(initialRate) || 5000,
@@ -1354,7 +1532,7 @@ export default function EditQuotationScreen({
     setPickerModalVisible(true);
   };
 
-  const openPumpPicker = () => {
+  const openPumpPicker = (itemIndex: number) => {
     const list: { id: string | null; label: string; subLabel?: string }[] = [
       { id: null, label: "None / Direct Pour" },
     ];
@@ -1378,9 +1556,13 @@ export default function EditQuotationScreen({
     setPickerConfig({
       title: "Select Concrete Pump",
       items: list,
-      selectedId: concretePump,
+      selectedId: items[itemIndex]?.concrete_pump ?? null,
       onSelect: (item) => {
-        setConcretePump(item.id ? String(item.id) : null);
+        handleUpdateItem(
+          itemIndex,
+          "concrete_pump",
+          item.id ? String(item.id) : null,
+        );
       },
     });
     setPickerSearch("");
@@ -1578,8 +1760,8 @@ export default function EditQuotationScreen({
       is_tax_inclusive: isTaxInclusive ? 1 : 0,
       notes: notes.trim(),
       plant_id: effectivePlantId ? Number(effectivePlantId) : undefined,
-      concrete_pump: concretePump || null,
-      pump_rate: parseFloat(pumpRate) || 0,
+      concrete_pump: items[0]?.concrete_pump || null,
+      pump_rate: parseFloat(items[0]?.pump_rate || "0") || 0,
       adjustment: parseFloat(adjustment) || 0,
       items: items.map((it) => ({
         mix_design_id: Number(it.mix_design_id),
@@ -1589,6 +1771,8 @@ export default function EditQuotationScreen({
           it.tax_id !== null && it.tax_id !== undefined
             ? Number(it.tax_id)
             : null,
+        concrete_pump: it.concrete_pump || null,
+        pump_rate: parseFloat(it.pump_rate || "0") || 0,
       })),
     };
 
@@ -1742,12 +1926,26 @@ export default function EditQuotationScreen({
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
           <ScrollView
+            ref={scrollViewRef}
             style={styles.container}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              {
+                paddingBottom:
+                  styles.scrollContent.paddingBottom +
+                  (Platform.OS === "android"
+                    ? keyboardPadding
+                    : keyboardPadding > 0
+                      ? 40
+                      : 0),
+              },
+            ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
             {loadingDropdowns && (
               <View style={styles.loadingBanner}>
@@ -1869,41 +2067,6 @@ export default function EditQuotationScreen({
               </TouchableOpacity>
             </View>
 
-            {/* PUMP & ADJUSTMENT FIELDS */}
-            <View style={styles.rowTwoCol}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Pump type</Text>
-                <TouchableOpacity
-                  style={styles.dropdownButton}
-                  onPress={openPumpPicker}
-                  activeOpacity={0.75}
-                >
-                  <Text
-                    style={[
-                      styles.dropdownText,
-                      !concretePump && styles.dropdownPlaceholder,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {formatPumpType(concretePump) || "Select Pump Type"}
-                  </Text>
-                  <Ionicons name="chevron-down" size={18} color="#64748B" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Pump rate in ₹</Text>
-                <TextInput
-                  style={styles.textInput}
-                  keyboardType="decimal-pad"
-                  value={pumpRate}
-                  onChangeText={handlePumpRateChange}
-                  placeholder="0"
-                  placeholderTextColor="#94A3B8"
-                />
-              </View>
-            </View>
-
             <View style={styles.productsSectionHeader}>
               <Text style={styles.productsSectionTitle}>
                 Products & Concrete Mixes ({items.length})
@@ -1912,7 +2075,13 @@ export default function EditQuotationScreen({
 
             {items.map((item, index) => {
               return (
-                <View key={item.id} style={styles.productCard}>
+                <View
+                  key={item.id}
+                  style={styles.productCard}
+                  onLayout={(e) => {
+                    productYRefs.current[index] = e.nativeEvent.layout.y;
+                  }}
+                >
                   {/* Product Header */}
                   <View style={styles.productCardHeader}>
                     <View style={styles.productIndexBadge}>
@@ -1974,6 +2143,8 @@ export default function EditQuotationScreen({
                         onChangeText={(val) =>
                           handleUpdateItem(index, "quantity", val)
                         }
+                        onFocus={() => handleInputFocus(`product_${index}`)}
+                        onBlur={handleInputBlur}
                         placeholder="e.g. 6"
                         placeholderTextColor="#94A3B8"
                       />
@@ -1990,6 +2161,8 @@ export default function EditQuotationScreen({
                         onChangeText={(val) =>
                           handleUpdateItem(index, "rate", val)
                         }
+                        onFocus={() => handleInputFocus(`product_${index}`)}
+                        onBlur={handleInputBlur}
                         placeholder="e.g. 5000"
                         placeholderTextColor="#94A3B8"
                       />
@@ -2009,6 +2182,45 @@ export default function EditQuotationScreen({
                       </Text>
                       <Ionicons name="chevron-down" size={18} color="#64748B" />
                     </TouchableOpacity>
+                  </View>
+
+                  {/* Pump Type Dropdown & Pump Rate in ₹ (Side-by-Side) */}
+                  <View style={styles.rowTwoCol}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>Pump type</Text>
+                      <TouchableOpacity
+                        style={styles.dropdownButton}
+                        onPress={() => openPumpPicker(index)}
+                        activeOpacity={0.75}
+                      >
+                        <Text
+                          style={[
+                            styles.dropdownText,
+                            !item.concrete_pump && styles.dropdownPlaceholder,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {formatPumpType(item.concrete_pump) || "Select Pump Type"}
+                        </Text>
+                        <Ionicons name="chevron-down" size={18} color="#64748B" />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>Pump rate in ₹</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="decimal-pad"
+                        value={item.pump_rate ?? "0"}
+                        onChangeText={(val) =>
+                          handleUpdateItem(index, "pump_rate", val)
+                        }
+                        onFocus={() => handleInputFocus(`product_${index}`)}
+                        onBlur={handleInputBlur}
+                        placeholder="0"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
                   </View>
 
                   {/* Line Item Calculated Subtotal Strip */}
@@ -2076,7 +2288,12 @@ export default function EditQuotationScreen({
             </TouchableOpacity>
 
             {/* 6. TERMS / NOTES */}
-            <View style={styles.formGroup}>
+            <View
+              style={styles.formGroup}
+              onLayout={(e) => {
+                notesYRef.current = e.nativeEvent.layout.y;
+              }}
+            >
               <Text style={styles.label}>Terms / notes</Text>
               <TextInput
                 style={styles.notesInput}
@@ -2084,12 +2301,19 @@ export default function EditQuotationScreen({
                 numberOfLines={4}
                 value={notes}
                 onChangeText={setNotes}
+                onFocus={() => handleInputFocus("notes")}
+                onBlur={handleInputBlur}
                 placeholder="Delivery schedule, special pumping terms, site access..."
                 placeholderTextColor="#94A3B8"
               />
             </View>
 
-            <View style={styles.totalEstimateCard}>
+            <View
+              style={styles.totalEstimateCard}
+              onLayout={(e) => {
+                estimateYRef.current = e.nativeEvent.layout.y;
+              }}
+            >
               <View style={styles.totalEstimateHeaderRow}>
                 <Text style={styles.totalEstimateLabel}>Total estimate</Text>
                 <Text style={styles.totalEstimateAmount}>
@@ -2112,6 +2336,8 @@ export default function EditQuotationScreen({
                   keyboardType="decimal-pad"
                   value={adjustment}
                   onChangeText={handleAdjustmentChange}
+                  onFocus={() => handleInputFocus("adjustment")}
+                  onBlur={handleInputBlur}
                   placeholder="0.00"
                   placeholderTextColor="#94A3B8"
                 />
