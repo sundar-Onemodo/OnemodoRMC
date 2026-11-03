@@ -129,12 +129,12 @@ export default function MoreScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: '#0B2A4A' }]}
+      style={[styles.safeArea, { backgroundColor: '#063b89' }]}
       edges={['top']}
     >
       <AppHeader
         title="More"
-        backgroundColor="#0B2A4A"
+        backgroundColor="#063b89"
         showMenu={true}
         showNotification={true}
       />

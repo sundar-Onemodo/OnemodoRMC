@@ -858,7 +858,7 @@ export default function EditLeadScreen({
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <StatusBar
         barStyle="light-content"
-        backgroundColor="#0B2A4A"
+        backgroundColor="#063b89"
         translucent={false}
       />
 

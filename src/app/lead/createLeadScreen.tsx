@@ -560,7 +560,7 @@ export default function CreateLeadScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B2A4A" />
+      <StatusBar barStyle="light-content" backgroundColor="#063b89" />
 
       {/* HEADER */}
       <View style={styles.header}>

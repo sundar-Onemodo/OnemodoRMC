@@ -1073,12 +1073,12 @@ export default function CreateBatchScheduleScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B2A4A" />
+      <StatusBar barStyle="light-content" backgroundColor="#063b89" />
 
       {/* Screen Header matching App Header color */}
       <AppHeader
         title="Create Batch Schedule"
-        backgroundColor="#0B2A4A"
+        backgroundColor="#063b89"
         onBackPress={() => router.replace("/batching-schedule" as any)}
         showNotification={false}
       />

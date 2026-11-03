@@ -1,28 +1,32 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import React from 'react';
-import { useColorScheme, View } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "@react-navigation/native";
+import { StatusBar } from "expo-status-bar";
+import React from "react";
+import { useColorScheme, View } from "react-native";
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
-import { Drawer } from '@/components/ui/drawer';
-import { AuthProvider, useAuth } from '@/context/auth-context';
-import LoginScreen from './login';
+import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import AppTabs from "@/components/app-tabs";
+import { Drawer } from "@/components/ui/drawer";
+import { AuthProvider, useAuth } from "@/context/auth-context";
+import LoginScreen from "./login";
 
-import { persistor, store, RootState } from '@/store/store';
-import { Provider, useSelector } from 'react-redux';
-import { PersistGate } from 'redux-persist/integration/react';
+import { persistor, RootState, store } from "@/store/store";
+import { Provider, useSelector } from "react-redux";
+import { PersistGate } from "redux-persist/integration/react";
 
 function TabLayoutInner() {
   const { isAuthenticated, login } = useAuth();
   const reduxToken = useSelector((state: RootState) => state.auth?.token);
   const isUserAuthenticated = Boolean(reduxToken || isAuthenticated);
   const colorScheme = useColorScheme();
-  
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <View style={{ flex: 1 }}>
-        <StatusBar style="light" />
+        <StatusBar style="light" backgroundColor="#063b89" />
         <AnimatedSplashOverlay />
         {isUserAuthenticated ? (
           <>
@@ -39,7 +43,7 @@ function TabLayoutInner() {
 
 export default function TabLayout() {
   return (
-    <Provider store={store} >
+    <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
         <AuthProvider>
           <TabLayoutInner />

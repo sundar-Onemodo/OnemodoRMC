@@ -533,7 +533,7 @@ export default function EditSalesOrderScreen() {
     useCallback(() => {
       StatusBar.setBarStyle('light-content');
       if (Platform.OS === 'android') {
-        StatusBar.setBackgroundColor('#0F172A');
+        StatusBar.setBackgroundColor('#063b89');
       }
 
       const onBackPress = () => {

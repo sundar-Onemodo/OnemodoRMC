@@ -1479,7 +1479,7 @@ export default function EditBatchScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B2A4A" />
+      <StatusBar barStyle="light-content" backgroundColor="#063b89" />
 
       {/* Screen Header matching status bar color */}
       <View style={styles.header}>

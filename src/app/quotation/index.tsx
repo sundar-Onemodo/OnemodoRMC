@@ -1,10 +1,17 @@
 import { baseURL } from "@/components/baseUrl/baseUrlAPI";
+import {
+  AlertButton,
+  AlertType,
+  CustomAlertModal,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 import { RootState } from "@/store/store";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -23,12 +30,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSelector } from "react-redux";
-import {
-  CustomAlertModal,
-  AlertType,
-  AlertButton,
-  formatSubmissionError,
-} from "@/components/ui/custom-alert-modal";
 
 export interface QuotationPatron {
   id: number;
@@ -145,15 +146,15 @@ export const formatDate = (dateStr?: string | null): string => {
   }
 };
 
-export const normalizeQuotationStatus = (
-  status: any,
-): number => {
+export const normalizeQuotationStatus = (status: any): number => {
   if (status === null || status === undefined) return 0;
   if (typeof status === "object") {
-    if (status.value !== undefined) return normalizeQuotationStatus(status.value);
+    if (status.value !== undefined)
+      return normalizeQuotationStatus(status.value);
     if (status.id !== undefined) return normalizeQuotationStatus(status.id);
     if (status.name !== undefined) return normalizeQuotationStatus(status.name);
-    if (status.status !== undefined) return normalizeQuotationStatus(status.status);
+    if (status.status !== undefined)
+      return normalizeQuotationStatus(status.status);
   }
   if (typeof status === "number") return status;
   const str = String(status).trim().toLowerCase();
@@ -175,42 +176,46 @@ export const getStatusMeta = (status: number | string | null | undefined) => {
         label: "Draft",
         color: "#475569",
         bg: "#F1F5F9",
-        border: "#CBD5E1",
+        border: "#E2E8F0",
+        accent: "#94A3B8",
         dot: "#94A3B8",
-        icon: "pencil-outline" as const,
+        icon: "pencil" as const,
       };
     case 1:
       return {
         key: "sent",
         code: 1,
         label: "Sent",
-        color: "#1D4ED8",
+        color: "#2563EB",
         bg: "#EFF6FF",
         border: "#BFDBFE",
+        accent: "#2563EB",
         dot: "#2563EB",
-        icon: "time-outline" as const,
+        icon: "paper-plane" as const,
       };
     case 2:
       return {
         key: "approved",
         code: 2,
         label: "Approved",
-        color: "#15803D",
+        color: "#16A34A",
         bg: "#DCFCE7",
         border: "#86EFAC",
+        accent: "#16A34A",
         dot: "#16A34A",
-        icon: "checkmark-circle-outline" as const,
+        icon: "checkmark-circle" as const,
       };
     case 3:
       return {
         key: "rejected",
         code: 3,
         label: "Rejected",
-        color: "#BE123C",
-        bg: "#FFE4E6",
+        color: "#DC2626",
+        bg: "#FEE2E2",
         border: "#FECDD3",
+        accent: "#DC2626",
         dot: "#DC2626",
-        icon: "close-circle-outline" as const,
+        icon: "close-circle" as const,
       };
     default:
       return {
@@ -220,6 +225,7 @@ export const getStatusMeta = (status: number | string | null | undefined) => {
         color: "#64748B",
         bg: "#F8FAFC",
         border: "#CBD5E1",
+        accent: "#64748B",
         dot: "#64748B",
         icon: "help-circle-outline" as const,
       };
@@ -390,10 +396,13 @@ export function deleteQuotationAPI(
     params.plant_id = plantId;
   }
 
-  console.log(`[Quotation Delete] DELETE ${baseURL}/quotations/${quotationId}`, {
-    params,
-    headers,
-  });
+  console.log(
+    `[Quotation Delete] DELETE ${baseURL}/quotations/${quotationId}`,
+    {
+      params,
+      headers,
+    },
+  );
 
   return axios.delete(`${baseURL}/quotations/${quotationId}`, {
     params,
@@ -409,6 +418,7 @@ interface QuotationCardProps {
   isConverting?: boolean;
   onDeleteQuotation?: (item: QuotationItem) => void;
   isDeleting?: boolean;
+  onOptionsPress: (item: QuotationItem) => void;
 }
 
 const QuotationCard = React.memo(function QuotationCard({
@@ -419,6 +429,7 @@ const QuotationCard = React.memo(function QuotationCard({
   isConverting = false,
   onDeleteQuotation,
   isDeleting = false,
+  onOptionsPress,
 }: QuotationCardProps) {
   const statusCode = normalizeQuotationStatus(item.status);
   const isApproved = statusCode === 2;
@@ -429,6 +440,7 @@ const QuotationCard = React.memo(function QuotationCard({
     Number(item.is_customer_po) === 1 ||
     String(item.is_customer_po) === "1" ||
     Boolean((item as any).is_customer_po_converted);
+
   const statusMeta = useMemo(() => getStatusMeta(item.status), [item.status]);
   const customer =
     item.patron?.legal_name || item.client || "Customer Not Specified";
@@ -487,243 +499,229 @@ const QuotationCard = React.memo(function QuotationCard({
 
   return (
     <View style={styles.quoteCard}>
-      <View style={styles.cardHeader}>
-        <View style={styles.quoteNumberBadge}>
-          <MaterialCommunityIcons
-            name={"file-document-outline"}
-            size={14}
-            color={"#2563EB"}
-          />
-          <Text style={styles.quoteNumberText}>{item.reference}</Text>
-        </View>
+      {/* Status left accent stripe */}
+      <View
+        style={[styles.cardLeftStripe, { backgroundColor: statusMeta.accent }]}
+      />
 
-        <View style={styles.badgesRightRow}>
-          {isPOConverted && (
-            <View style={styles.poBadge}>
-              <Ionicons
-                name={"shield-checkmark"}
-                size={11}
-                color={"#047857"}
-              />
-              <Text style={styles.poBadgeText}>Customer PO Converted</Text>
-            </View>
-          )}
-
-          <View
-            style={[
-              styles.statusBadge,
-              {
-                backgroundColor: statusMeta.bg,
-                borderColor: statusMeta.border,
-              },
-            ]}
-          >
-            <View
-              style={[styles.statusDot, { backgroundColor: statusMeta.dot }]}
+      <View style={styles.cardContent}>
+        {/* Top Row: Ref Badge & Status Badge */}
+        <View style={styles.cardHeader}>
+          <View style={styles.quoteNumberBadge}>
+            <MaterialCommunityIcons
+              name="file-document-outline"
+              size={14}
+              color="#2563EB"
             />
-            <Text
-              style={[styles.statusText, { color: statusMeta.color }]}
-              numberOfLines={1}
+            <Text style={styles.quoteNumberText}>{item.reference}</Text>
+          </View>
+
+          <View style={styles.badgesRightRow}>
+            {isPOConverted && (
+              <View style={styles.poBadge}>
+                <Ionicons name="shield-checkmark" size={11} color="#047857" />
+                <Text style={styles.poBadgeText}>PO Converted</Text>
+              </View>
+            )}
+
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor: statusMeta.bg,
+                  borderColor: statusMeta.border,
+                },
+              ]}
             >
-              {statusMeta.label}
-            </Text>
+              <Ionicons
+                name={statusMeta.icon as any}
+                size={13}
+                color={statusMeta.color}
+              />
+              <Text
+                style={[styles.statusText, { color: statusMeta.color }]}
+                numberOfLines={1}
+              >
+                {statusMeta.label}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      <View style={styles.projectSection}>
-        <View style={styles.projectTitleRow}>
-          <Text style={styles.projectNameText} numberOfLines={2}>
+        {/* Customer Name & 3-Dots Action Button */}
+        <View style={styles.customerRow}>
+          <Text style={styles.projectNameText} numberOfLines={1}>
             {customer}
+          </Text>
+          <TouchableOpacity
+            style={styles.cardOptionsBtn}
+            onPress={() => onOptionsPress(item)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="ellipsis-vertical" size={16} color="#94A3B8" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Site Location with Red Pin */}
+        <View style={styles.contactRow}>
+          <Ionicons name="location-sharp" size={14} color="#EF4444" />
+          <Text style={styles.contactPersonText} numberOfLines={1}>
+            {site}
           </Text>
           {item.pump_type ? (
             <View style={styles.pumpBadge}>
-              <Ionicons name={"flash-outline"} size={11} color={"#64748B"} />
+              <Ionicons name="flash-outline" size={10} color="#64748B" />
               <Text style={styles.pumpBadgeText}>{item.pump_type}</Text>
             </View>
           ) : null}
         </View>
 
-        <View style={styles.contactRow}>
-          <Ionicons name={"location"} size={14} color={"#DC2626"} />
-          <Text style={styles.contactPersonText} numberOfLines={1}>
-            {site}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.specBox}>
-        <View style={styles.specCol}>
-          <View style={styles.specHeaderRow}>
-            <MaterialCommunityIcons
-              name={"layers-triple-outline"}
-              size={13}
-              color={"#64748B"}
-            />
-            <Text style={styles.specLabel}>MIX DESIGN</Text>
-          </View>
-          <Text style={styles.specValue} numberOfLines={1}>
-            {mix}
-          </Text>
-        </View>
-
-        <View style={styles.specDivider} />
-
-        <View style={styles.specCol}>
-          <View style={styles.specHeaderRow}>
-            <MaterialCommunityIcons
-              name={"cube-outline"}
-              size={13}
-              color={"#2563EB"}
-            />
-            <Text style={styles.specLabel}>VOLUME</Text>
-          </View>
-          <Text style={[styles.specValue, { color: "#2563EB" }]}>
-            {String(volume).includes("m³") ? volume : `${volume} m³`}
-          </Text>
-        </View>
-
-        <View style={styles.specDivider} />
-
-        <View style={styles.specCol}>
-          <View style={styles.specHeaderRow}>
-            <Ionicons name={"cash-outline"} size={13} color={"#059669"} />
-            <Text style={styles.specLabel}>TOTAL VALUE</Text>
-          </View>
-          <Text
-            style={[
-              styles.specValue,
-              { color: "#059669", fontWeight: "800" },
-            ]}
-          >
-            {formattedTotal}
-          </Text>
-        </View>
-      </View>
-
-      {Array.isArray(item.items) && item.items.length > 1 && (
-        <View style={styles.multiItemsPreviewRow}>
-          {item.items.map((lineItem, idx) => (
-            <View key={lineItem.id || idx} style={styles.multiItemChip}>
-              <Ionicons name={"cube-outline"} size={11} color={"#2563EB"} />
-              <Text style={styles.multiItemChipText} numberOfLines={1}>
-                {lineItem.mix_design?.design_name ||
-                  lineItem.mix_design?.name ||
-                  "Mix"}
-                : {parseFloat(String(lineItem.quantity || "0"))} m³
-              </Text>
+        {/* 3-Column Concrete Specs Box */}
+        <View style={styles.specBox}>
+          {/* Column 1: Mix Design */}
+          <View style={styles.specCol}>
+            <View style={styles.specHeaderRow}>
+              <MaterialCommunityIcons
+                name="layers-triple-outline"
+                size={14}
+                color="#64748B"
+              />
+              <Text style={styles.specLabel}>Mix Design</Text>
             </View>
-          ))}
-        </View>
-      )}
-
-      <View style={styles.datesBar}>
-        <View style={styles.dateItem}>
-          <Ionicons name={"calendar-outline"} size={13} color={"#64748B"} />
-          <Text style={styles.dateLabel}>
-            Quote: <Text style={styles.dateVal}>{formattedQuoteDate}</Text>
-          </Text>
-        </View>
-
-        <View style={styles.dateItem}>
-          <Ionicons name={"time-outline"} size={13} color={"#64748B"} />
-          <Text style={styles.dateLabel}>
-            Valid Till: <Text style={styles.dateVal}>{formattedValidityDate}</Text>
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.cardFooter}>
-        <View style={styles.footerLeft}>
-          {item.notes ? (
-            <Text style={styles.notesSnippet} numberOfLines={1}>
-              {item.notes}
+            <Text style={styles.specMixValue} numberOfLines={1}>
+              {mix}
             </Text>
-          ) : (
-            <Text style={styles.taxInclusiveText}>
-              Inclusive of all Taxes
+          </View>
+
+          {/* Column 2: Volume */}
+          <View style={styles.specCol}>
+            <View style={styles.specHeaderRow}>
+              <MaterialCommunityIcons
+                name="cube-outline"
+                size={14}
+                color="#2563EB"
+              />
+              <Text style={styles.specLabel}>Volume</Text>
+            </View>
+            <Text style={styles.specVolumeValue} numberOfLines={1}>
+              {String(volume).includes("m³") ? volume : `${volume} m³`}
             </Text>
-          )}
+          </View>
+
+          {/* Column 3: Total Value */}
+          <View style={styles.specCol}>
+            <View style={styles.specHeaderRow}>
+              <Ionicons name="cash-outline" size={14} color="#16A34A" />
+              <Text style={styles.specLabel}>Total Value</Text>
+            </View>
+            <Text style={styles.specTotalValue} numberOfLines={1}>
+              {formattedTotal}
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.actionButtonsGroup}>
-          <TouchableOpacity
-            style={styles.actionViewBtn}
-            activeOpacity={0.7}
-            onPress={() => onOpenView(item)}
-          >
-            <Ionicons name="eye-outline" size={13} color={"#0F172A"} />
-            <Text style={styles.actionViewText}>View</Text>
-          </TouchableOpacity>
+        {/* Multi-item chip indicators if > 1 item */}
+        {Array.isArray(item.items) && item.items.length > 1 && (
+          <View style={styles.multiItemsPreviewRow}>
+            {item.items.map((lineItem, idx) => (
+              <View key={lineItem.id || idx} style={styles.multiItemChip}>
+                <Ionicons name="cube-outline" size={11} color="#2563EB" />
+                <Text style={styles.multiItemChipText} numberOfLines={1}>
+                  {lineItem.mix_design?.design_name ||
+                    lineItem.mix_design?.name ||
+                    "Mix"}
+                  : {parseFloat(String(lineItem.quantity || "0"))} m³
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
 
-          {canEdit && (
+        {/* Dates Bar: Quote Date & Validity */}
+        <View style={styles.datesBar}>
+          <View style={styles.dateItem}>
+            <Ionicons name="calendar-outline" size={13} color="#64748B" />
+            <Text style={styles.dateLabel}>
+              Quote: <Text style={styles.dateVal}>{formattedQuoteDate}</Text>
+            </Text>
+          </View>
+
+          <View style={styles.dateDivider} />
+
+          <View style={styles.dateItem}>
+            <Ionicons name="time-outline" size={13} color="#64748B" />
+            <Text style={styles.dateLabel}>
+              Valid Till:{" "}
+              <Text style={styles.dateVal}>{formattedValidityDate}</Text>
+            </Text>
+          </View>
+        </View>
+
+        {/* Bottom Actions Row */}
+        <View style={styles.cardFooter}>
+          <View style={styles.actionButtonsGroup}>
+            {/* View Button */}
+            <TouchableOpacity
+              style={styles.actionViewBtn}
+              activeOpacity={0.7}
+              onPress={() => onOpenView(item)}
+            >
+              <Ionicons name="eye-outline" size={14} color="#2563EB" />
+              <Text style={styles.actionViewText}>View</Text>
+            </TouchableOpacity>
+
+            {/* Edit Button */}
             <TouchableOpacity
               style={styles.actionEditBtn}
               onPress={() => onOpenEdit(item)}
               activeOpacity={0.7}
             >
-              <Ionicons name="create-outline" size={13} color={"#2563EB"} />
+              <Ionicons name="create-outline" size={14} color="#2563EB" />
               <Text style={styles.actionEditText}>Edit</Text>
             </TouchableOpacity>
-          )}
 
-          {canDelete && onDeleteQuotation && (
-            <TouchableOpacity
-              style={styles.actionDeleteBtn}
-              onPress={() => onDeleteQuotation(item)}
-              activeOpacity={0.7}
-              disabled={isDeleting}
-            >
-              {isDeleting ? (
-                <ActivityIndicator size="small" color="#DC2626" />
-              ) : (
-                <>
-                  <Ionicons name="trash-outline" size={13} color={"#DC2626"} />
-                  <Text style={styles.actionDeleteText}>Delete</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
+            {/* Delete Button */}
+            {canDelete && onDeleteQuotation && (
+              <TouchableOpacity
+                style={styles.actionDeleteBtn}
+                onPress={() => onDeleteQuotation(item)}
+                activeOpacity={0.7}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                    <Text style={styles.actionDeleteText}>Delete</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
-          {isApproved && !isPOConverted && (
-            <TouchableOpacity
-              style={styles.actionConvertBtn}
-              onPress={() => onConvertToCustomerPO(item)}
-              activeOpacity={0.7}
-              disabled={isConverting}
-            >
-              {isConverting ? (
-                <ActivityIndicator
-                  size="small"
-                  color="#047857"
-                />
-              ) : (
-                <>
-                  <Ionicons
-                    name="swap-horizontal"
-                    size={14}
-                    color="#047857"
-                  />
-                  <Text style={styles.actionConvertText}>
-                    Convert to Customer PO
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {isApproved && isPOConverted && (
-            <View style={styles.actionConvertedBtn}>
-              <Ionicons
-                name="shield-checkmark"
-                size={13}
-                color="#15803D"
-              />
-              <Text style={styles.actionConvertedText}>
-                Customer PO Converted
-              </Text>
-            </View>
-          )}
+            {/* Convert to PO button if Approved */}
+            {isApproved && !isPOConverted && (
+              <TouchableOpacity
+                style={styles.actionConvertBtn}
+                onPress={() => onConvertToCustomerPO(item)}
+                activeOpacity={0.7}
+                disabled={isConverting}
+              >
+                {isConverting ? (
+                  <ActivityIndicator size="small" color="#047857" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="swap-horizontal"
+                      size={14}
+                      color="#047857"
+                    />
+                    <Text style={styles.actionConvertText}>Convert</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -745,21 +743,35 @@ export default function QuotationScreen({
 
   const [search, setSearch] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"All" | 0 | 1 | 2 | 3>("All");
+  const [sortBy, setSortBy] = useState<
+    "newest" | "oldest" | "amount_high" | "amount_low"
+  >("newest");
 
   // View & Review & Convert PO States
   const [viewModalVisible, setViewModalVisible] = useState<boolean>(false);
-  const [viewingQuotation, setViewingQuotation] = useState<QuotationItem | null>(null);
+  const [viewingQuotation, setViewingQuotation] =
+    useState<QuotationItem | null>(null);
   const [viewLoading, setViewLoading] = useState<boolean>(false);
-  const [actionLoading, setActionLoading] = useState<"approve" | "reject" | "convert" | "send" | null>(null);
+  const [actionLoading, setActionLoading] = useState<
+    "approve" | "reject" | "convert" | "send" | null
+  >(null);
   const [convertingId, setConvertingId] = useState<string | null>(null);
 
   // Reject Dialog States
   const [rejectModalVisible, setRejectModalVisible] = useState<boolean>(false);
-  const [rejectTargetItem, setRejectTargetItem] = useState<QuotationItem | null>(null);
+  const [rejectTargetItem, setRejectTargetItem] =
+    useState<QuotationItem | null>(null);
   const [rejectComment, setRejectComment] = useState<string>("Rejected");
 
+  // Filter Sheet / Modal State
+  const [filterModalVisible, setFilterModalVisible] = useState<boolean>(false);
+
+  // Card 3-Dots Action Sheet State
+  const [cardMenuQuotation, setCardMenuQuotation] =
+    useState<QuotationItem | null>(null);
+
   // Delete Quotation State
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | string | null>(null);
   const [alertConfig, setAlertConfig] = useState<{
     visible: boolean;
     title: string;
@@ -782,6 +794,8 @@ export default function QuotationScreen({
   const handleBack = useCallback(() => {
     if (onBack) {
       onBack();
+    } else if (router.canGoBack()) {
+      router.back();
     } else {
       router.replace("/more" as any);
     }
@@ -826,7 +840,7 @@ export default function QuotationScreen({
 
       setErrorMessage(null);
 
-      // Step 2: Fetch fresh data without timeout (same as Postman)
+      // Step 2: Fetch fresh data without timeout
       try {
         const res = await fetchQuotationsApi(token, targetPlantId);
 
@@ -883,7 +897,7 @@ export default function QuotationScreen({
     useCallback(() => {
       StatusBar.setBarStyle("light-content");
       if (Platform.OS === "android") {
-        StatusBar.setBackgroundColor("#0B2A4A");
+        StatusBar.setBackgroundColor("#063b89");
       }
 
       const onBackPress = () => {
@@ -896,7 +910,6 @@ export default function QuotationScreen({
         onBackPress,
       );
 
-      // On initial focus, load cache + fetch. On subsequent focus (e.g. back from edit/create), refresh silently
       if (isMountedRef.current) {
         loadQuotations(false, true);
       } else {
@@ -915,7 +928,7 @@ export default function QuotationScreen({
 
   const filteredQuotations = useMemo(() => {
     const trimmed = search.trim().toLowerCase();
-    return quotations.filter((item) => {
+    const result = quotations.filter((item) => {
       if (
         activeTab !== "All" &&
         normalizeQuotationStatus(item.status) !== activeTab
@@ -942,7 +955,25 @@ export default function QuotationScreen({
       }
       return true;
     });
-  }, [quotations, activeTab, search]);
+
+    return result.sort((a, b) => {
+      if (sortBy === "amount_high") {
+        const valA = parseFloat(String(a.amount_total || "0")) || 0;
+        const valB = parseFloat(String(b.amount_total || "0")) || 0;
+        return valB - valA;
+      }
+      if (sortBy === "amount_low") {
+        const valA = parseFloat(String(a.amount_total || "0")) || 0;
+        const valB = parseFloat(String(b.amount_total || "0")) || 0;
+        return valA - valB;
+      }
+      if (sortBy === "oldest") {
+        return Number(a.id || 0) - Number(b.id || 0);
+      }
+      // default: newest first
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+  }, [quotations, activeTab, search, sortBy]);
 
   const { tabCounts, totalPipelineValue } = useMemo(() => {
     let draft = 0;
@@ -1012,7 +1043,11 @@ export default function QuotationScreen({
         null;
 
       try {
-        const res = await fetchQuotationDetailApi(token, targetPlantId, item.id);
+        const res = await fetchQuotationDetailApi(
+          token,
+          targetPlantId,
+          item.id,
+        );
         const rawApiData = res?.data?.data || res?.data;
         let detailData = rawApiData;
         if (rawApiData && Array.isArray(rawApiData.data)) {
@@ -1061,7 +1096,8 @@ export default function QuotationScreen({
       }
 
       const execId =
-        item.sales_executive_id !== undefined && item.sales_executive_id !== null
+        item.sales_executive_id !== undefined &&
+        item.sales_executive_id !== null
           ? String(item.sales_executive_id)
           : (item as any).sales_executive?.id !== undefined &&
               (item as any).sales_executive?.id !== null
@@ -1197,7 +1233,10 @@ export default function QuotationScreen({
                     `Quotation ${item.reference} has been approved successfully. You can now convert it to a Customer PO.`,
                 );
               } catch (err: any) {
-                console.error("[Quotation] Approve error:", err?.response?.data || err?.message || err);
+                console.error(
+                  "[Quotation] Approve error:",
+                  err?.response?.data || err?.message || err,
+                );
                 const errMsg =
                   err?.response?.data?.message ||
                   err?.response?.data?.error ||
@@ -1250,7 +1289,10 @@ export default function QuotationScreen({
           `Quotation ${rejectTargetItem.reference} has been marked as Rejected.`,
       );
     } catch (err: any) {
-      console.error("[Quotation] Reject error:", err?.response?.data || err?.message || err);
+      console.error(
+        "[Quotation] Reject error:",
+        err?.response?.data || err?.message || err,
+      );
       const errMsg =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
@@ -1301,7 +1343,9 @@ export default function QuotationScreen({
                 );
                 updateQuotationInState(item.id, { is_customer_po: 1 });
                 setViewingQuotation((prev) =>
-                  prev && prev.id === item.id ? { ...prev, is_customer_po: 1 } : prev,
+                  prev && prev.id === item.id
+                    ? { ...prev, is_customer_po: 1 }
+                    : prev,
                 );
                 loadQuotations(false, true);
                 Alert.alert(
@@ -1360,7 +1404,10 @@ export default function QuotationScreen({
         });
         loadQuotations(false, true);
       } catch (err: any) {
-        const errMsg = formatSubmissionError(err, "Failed to delete quotation.");
+        const errMsg = formatSubmissionError(
+          err,
+          "Failed to delete quotation.",
+        );
         setAlertConfig({
           visible: true,
           title: "Delete Failed",
@@ -1404,6 +1451,10 @@ export default function QuotationScreen({
     [hideAlert, confirmDeleteQuotation],
   );
 
+  const handleOptionsPress = useCallback((item: QuotationItem) => {
+    setCardMenuQuotation(item);
+  }, []);
+
   const renderQuotationCard = useCallback(
     ({ item }: { item: QuotationItem }) => {
       return (
@@ -1415,6 +1466,7 @@ export default function QuotationScreen({
           isConverting={convertingId === String(item.id)}
           onDeleteQuotation={handlePromptDelete}
           isDeleting={deletingId === item.id}
+          onOptionsPress={handleOptionsPress}
         />
       );
     },
@@ -1425,6 +1477,7 @@ export default function QuotationScreen({
       convertingId,
       handlePromptDelete,
       deletingId,
+      handleOptionsPress,
     ],
   );
 
@@ -1437,145 +1490,194 @@ export default function QuotationScreen({
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <StatusBar
-        barStyle={"light-content"}
-        backgroundColor={"#0B2A4A"}
+        barStyle="light-content"
+        backgroundColor="#063b89"
         translucent={false}
       />
 
-      <View style={styles.header}>
+      {/* HEADER SECTION WITH LINEAR GRADIENT & MODERN GRAPHICS */}
+      <LinearGradient
+        colors={["#063b89", "#0B4DA8", "#1E62D0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
+        {/* Subtle decorative circles */}
+        <View style={styles.headerBgCircle1} />
+        <View style={styles.headerBgCircle2} />
+
+        {/* Header Top Bar: Back Button, Titles, Bell & Document Illustration */}
         <View style={styles.headerTop}>
-          <View style={styles.headerTitleGroup}>
-            <View style={styles.headerTitleRow}>
-              <TouchableOpacity
-                style={styles.backBtn}
-                onPress={handleBack}
-                activeOpacity={0.7}
-              >
-                <Ionicons name={"arrow-back"} size={20} color={"#fff"} />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Quotation</Text>
-            </View>
-            <View style={styles.plantBadgeRow}>
-              <Ionicons name={"receipt-outline"} size={12} color={"#94A3B8"} />
-              <Text style={styles.plantBadgeText}>
-                Commercial Pipeline
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.refreshBtn}
-            onPress={handleRefresh}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={"reload-outline"}
-              size={18}
-              color={"#fff"}
-              style={
-                refreshing ? { transform: [{ rotate: "45deg" }] } : undefined
-              }
-            />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.kpiContainer}>
-          <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>TOTAL QUOTES</Text>
-            <Text style={styles.kpiValue}>{quotations.length}</Text>
-          </View>
-          <View style={styles.kpiDivider} />
-          <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>APPROVED</Text>
-            <Text style={[styles.kpiValue, { color: "#34D399" }]}>
-              {tabCounts.approved}
-            </Text>
-          </View>
-          <View style={styles.kpiDivider} />
-          <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>PIPELINE VALUE</Text>
-            <Text
-              style={[styles.kpiValue, { color: "#60A5FA" }]}
-              numberOfLines={1}
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={handleBack}
+              activeOpacity={0.7}
             >
-              {formatCurrency(totalPipelineValue)}
-            </Text>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.headerTitles}>
+              <Text style={styles.headerMainTitle}>Quotation</Text>
+              <Text style={styles.headerSubtitle}>Commercial Pipeline</Text>
+            </View>
+          </View>
+
+          <View style={styles.headerRight}>
+            {/* Notification Bell */}
+            <TouchableOpacity
+              style={styles.bellBtn}
+              onPress={() =>
+                Alert.alert(
+                  "Notifications",
+                  "You have no unread notifications for quotations.",
+                )
+              }
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={20}
+                color="#FFFFFF"
+              />
+              <View style={styles.bellDot} />
+            </TouchableOpacity>
+
+            {/* Stylized Document Illustration with Currency and Arrow Badge */}
+            <View style={styles.headerGraphicWrapper}>
+              <View style={styles.headerDocCard}>
+                <View style={styles.headerDocTopBar} />
+                <View style={styles.headerDocRupeeRow}>
+                  <Text style={styles.headerDocRupeeText}>₹</Text>
+                  <View style={styles.headerDocRupeeLine} />
+                </View>
+                <View style={styles.headerDocBodyLine1} />
+                <View style={styles.headerDocBodyLine2} />
+              </View>
+              <View style={styles.headerDocGrowthBadge}>
+                <Ionicons name="arrow-up" size={11} color="#FFFFFF" />
+              </View>
+            </View>
           </View>
         </View>
 
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color={"#64748B"} />
+        {/* KPI Summary Cards Container (Total Quotes, Approved, Pipeline Value) */}
+        <View style={styles.kpiContainer}>
+          {/* Card 1: Total Quotes */}
+          <View style={styles.kpiItem}>
+            <View style={[styles.kpiIconBox, { backgroundColor: "#EFF6FF" }]}>
+              <MaterialCommunityIcons
+                name="file-document-outline"
+                size={20}
+                color="#2563EB"
+              />
+            </View>
+            <View style={styles.kpiTextGroup}>
+              <Text style={styles.kpiValueText}>{quotations.length}</Text>
+              <Text style={styles.kpiLabelText}>Total Quotes</Text>
+            </View>
+          </View>
+
+          {/* Card 2: Approved */}
+          <View style={styles.kpiItem}>
+            <View style={[styles.kpiIconBox, { backgroundColor: "#DCFCE7" }]}>
+              <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+            </View>
+            <View style={styles.kpiTextGroup}>
+              <Text style={styles.kpiValueText}>{tabCounts.approved}</Text>
+              <Text style={styles.kpiLabelText}>Approved</Text>
+            </View>
+          </View>
+
+          {/* Card 3: Pipeline Value */}
+          <View style={styles.kpiItem}>
+            <View style={[styles.kpiIconBox, { backgroundColor: "#F3E8FF" }]}>
+              <MaterialCommunityIcons
+                name="chart-timeline-variant"
+                size={18}
+                color="#9333EA"
+              />
+            </View>
+            <View style={styles.kpiTextGroup}>
+              <Text style={styles.kpiValueText} numberOfLines={1}>
+                {formatCurrency(totalPipelineValue)}
+              </Text>
+              <Text style={styles.kpiLabelText}>Pipeline Value</Text>
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* SEARCH AND FILTER BAR */}
+      <View style={styles.searchFilterRow}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color="#94A3B8" />
           <TextInput
             style={styles.searchInput}
             placeholder="Search by customer, site..."
-            placeholderTextColor={"#94A3B8"}
+            placeholderTextColor="#94A3B8"
             value={search}
             onChangeText={setSearch}
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch("")}>
-              <Ionicons name="close-circle" size={18} color={"#94A3B8"} />
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
             </TouchableOpacity>
           )}
         </View>
+
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => setFilterModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="funnel" size={14} color="#2563EB" />
+          <Text style={styles.filterButtonText}>Filter</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.filterSection}>
+      {/* HORIZONTAL STATUS FILTER PILLS */}
+      <View style={styles.statusTabsRow}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterScroll}
+          contentContainerStyle={styles.statusTabsScroll}
         >
           {[
-            { key: "All" as const, label: "All", count: tabCounts.all },
-            { key: 0 as const, label: "Draft", count: tabCounts.draft },
-            { key: 1 as const, label: "Sent", count: tabCounts.sent },
-            { key: 2 as const, label: "Approved", count: tabCounts.approved },
-            { key: 3 as const, label: "Rejected", count: tabCounts.rejected },
+            { key: "All" as const, label: `All (${tabCounts.all})` },
+            { key: 0 as const, label: `Draft (${tabCounts.draft})` },
+            { key: 1 as const, label: `Sent (${tabCounts.sent})` },
+            { key: 2 as const, label: `Approved (${tabCounts.approved})` },
+            { key: 3 as const, label: `Rejected (${tabCounts.rejected})` },
           ].map((tab) => {
             const isSelected = activeTab === tab.key;
             return (
               <TouchableOpacity
                 key={String(tab.key)}
                 style={[
-                  styles.filterChip,
-                  isSelected && styles.filterChipActive,
+                  styles.statusPill,
+                  isSelected && styles.statusPillActive,
                 ]}
                 onPress={() => setActiveTab(tab.key)}
                 activeOpacity={0.7}
               >
                 <Text
                   style={[
-                    styles.filterChipText,
-                    isSelected && styles.filterChipTextActive,
+                    styles.statusPillText,
+                    isSelected && styles.statusPillTextActive,
                   ]}
                 >
                   {tab.label}
                 </Text>
-                <View
-                  style={[
-                    styles.filterCountBadge,
-                    isSelected && styles.filterCountBadgeActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterCountText,
-                      isSelected && styles.filterCountTextActive,
-                    ]}
-                  >
-                    {tab.count}
-                  </Text>
-                </View>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
       </View>
 
+      {/* ERROR NOTICE BANNER */}
       {errorMessage && (
         <View style={styles.errorNotice}>
-          <Ionicons name="warning-outline" size={16} color={"#DC2626"} />
+          <Ionicons name="warning-outline" size={16} color="#DC2626" />
           <Text style={styles.errorNoticeText}>{errorMessage}</Text>
           <TouchableOpacity onPress={() => loadQuotations(false, false)}>
             <Text style={styles.retryText}>Retry</Text>
@@ -1583,16 +1685,17 @@ export default function QuotationScreen({
         </View>
       )}
 
+      {/* MAIN LIST OF QUOTATIONS */}
       {loading && !refreshing && quotations.length === 0 ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size={"large"} color={"#2563EB"} />
+          <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>
             Fetching quotations from plant...
           </Text>
         </View>
       ) : (
         <FlatList
-          style={{ flex: 1, backgroundColor: "#F8FAFC" }}
+          style={{ flex: 1, backgroundColor: "#F4F7FC" }}
           data={filteredQuotations}
           keyExtractor={keyExtractor}
           renderItem={renderQuotationCard}
@@ -1608,7 +1711,7 @@ export default function QuotationScreen({
               refreshing={refreshing}
               onRefresh={handleRefresh}
               colors={["#2563EB"]}
-              tintColor={"#2563EB"}
+              tintColor="#2563EB"
             />
           }
           ListEmptyComponent={
@@ -1678,8 +1781,351 @@ export default function QuotationScreen({
         }
         activeOpacity={0.85}
       >
-        <Ionicons name="add" size={26} color="#FFFFFF" />
+        <Ionicons name="add" size={30} color="#FFFFFF" />
       </TouchableOpacity>
+
+      {/* CARD 3-DOTS ACTION SHEET MODAL */}
+      <Modal
+        visible={Boolean(cardMenuQuotation)}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setCardMenuQuotation(null)}
+      >
+        <TouchableOpacity
+          style={styles.sheetOverlay}
+          activeOpacity={1}
+          onPress={() => setCardMenuQuotation(null)}
+        >
+          <View style={styles.actionSheetBox}>
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={styles.sheetTitle}>
+                  {cardMenuQuotation?.reference || "Quotation Actions"}
+                </Text>
+                <Text style={styles.sheetSubtitle}>
+                  {cardMenuQuotation?.patron?.legal_name ||
+                    cardMenuQuotation?.client ||
+                    "Select an action"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setCardMenuQuotation(null)}
+                style={styles.sheetCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {cardMenuQuotation && (
+              <View style={styles.sheetOptionsContainer}>
+                {/* View Details */}
+                <TouchableOpacity
+                  style={styles.sheetOptionItem}
+                  onPress={() => {
+                    const q = cardMenuQuotation;
+                    setCardMenuQuotation(null);
+                    handleOpenView(q);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.sheetIconBox,
+                      { backgroundColor: "#EFF6FF" },
+                    ]}
+                  >
+                    <Ionicons name="eye-outline" size={18} color="#2563EB" />
+                  </View>
+                  <Text style={styles.sheetOptionText}>View Quotation</Text>
+                </TouchableOpacity>
+
+                {/* Edit Quotation */}
+                {normalizeQuotationStatus(cardMenuQuotation.status) === 0 && (
+                  <TouchableOpacity
+                    style={styles.sheetOptionItem}
+                    onPress={() => {
+                      const q = cardMenuQuotation;
+                      setCardMenuQuotation(null);
+                      handleOpenEdit(q);
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.sheetIconBox,
+                        { backgroundColor: "#EFF6FF" },
+                      ]}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={18}
+                        color="#2563EB"
+                      />
+                    </View>
+                    <Text style={styles.sheetOptionText}>Edit Quotation</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Send Quotation (Draft) */}
+                {normalizeQuotationStatus(cardMenuQuotation.status) === 0 && (
+                  <TouchableOpacity
+                    style={styles.sheetOptionItem}
+                    onPress={() => {
+                      const q = cardMenuQuotation;
+                      setCardMenuQuotation(null);
+                      handleSubmitQuotationStatus(q);
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.sheetIconBox,
+                        { backgroundColor: "#EFF6FF" },
+                      ]}
+                    >
+                      <Ionicons name="paper-plane" size={18} color="#2563EB" />
+                    </View>
+                    <Text style={styles.sheetOptionText}>
+                      Send / Submit Quotation
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Approve (Sent) */}
+                {normalizeQuotationStatus(cardMenuQuotation.status) === 1 && (
+                  <TouchableOpacity
+                    style={styles.sheetOptionItem}
+                    onPress={() => {
+                      const q = cardMenuQuotation;
+                      setCardMenuQuotation(null);
+                      handleApproveQuotation(q);
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.sheetIconBox,
+                        { backgroundColor: "#DCFCE7" },
+                      ]}
+                    >
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color="#16A34A"
+                      />
+                    </View>
+                    <Text style={styles.sheetOptionText}>
+                      Approve Quotation
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Reject (Sent) */}
+                {normalizeQuotationStatus(cardMenuQuotation.status) === 1 && (
+                  <TouchableOpacity
+                    style={styles.sheetOptionItem}
+                    onPress={() => {
+                      const q = cardMenuQuotation;
+                      setCardMenuQuotation(null);
+                      handleOpenRejectModal(q);
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.sheetIconBox,
+                        { backgroundColor: "#FEE2E2" },
+                      ]}
+                    >
+                      <Ionicons
+                        name="close-circle-outline"
+                        size={18}
+                        color="#DC2626"
+                      />
+                    </View>
+                    <Text
+                      style={[styles.sheetOptionText, { color: "#DC2626" }]}
+                    >
+                      Reject Quotation
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Convert to Customer PO (Approved) */}
+                {normalizeQuotationStatus(cardMenuQuotation.status) === 2 &&
+                  !(
+                    Number(cardMenuQuotation.is_customer_po) === 1 ||
+                    String(cardMenuQuotation.is_customer_po) === "1" ||
+                    Boolean((cardMenuQuotation as any).is_customer_po_converted)
+                  ) && (
+                    <TouchableOpacity
+                      style={styles.sheetOptionItem}
+                      onPress={() => {
+                        const q = cardMenuQuotation;
+                        setCardMenuQuotation(null);
+                        handleConvertToCustomerPO(q);
+                      }}
+                    >
+                      <View
+                        style={[
+                          styles.sheetIconBox,
+                          { backgroundColor: "#DCFCE7" },
+                        ]}
+                      >
+                        <Ionicons
+                          name="swap-horizontal"
+                          size={18}
+                          color="#047857"
+                        />
+                      </View>
+                      <Text
+                        style={[styles.sheetOptionText, { color: "#047857" }]}
+                      >
+                        Convert to Customer PO
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                {/* Delete Quotation (Draft or Sent) */}
+                {(normalizeQuotationStatus(cardMenuQuotation.status) === 0 ||
+                  normalizeQuotationStatus(cardMenuQuotation.status) === 1) && (
+                  <TouchableOpacity
+                    style={styles.sheetOptionItem}
+                    onPress={() => {
+                      const q = cardMenuQuotation;
+                      setCardMenuQuotation(null);
+                      handlePromptDelete(q);
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.sheetIconBox,
+                        { backgroundColor: "#FEF2F2" },
+                      ]}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#DC2626"
+                      />
+                    </View>
+                    <Text
+                      style={[styles.sheetOptionText, { color: "#DC2626" }]}
+                    >
+                      Delete Quotation
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* FILTER & SORT MODAL */}
+      <Modal
+        visible={filterModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.filterSheetContainer}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Sort & Filter</Text>
+              <TouchableOpacity
+                onPress={() => setFilterModalVisible(false)}
+                style={styles.sheetCloseBtn}
+              >
+                <Ionicons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ paddingHorizontal: 20 }}>
+              {/* Sort By Section */}
+              <Text style={styles.filterSectionHeader}>SORT BY</Text>
+              {[
+                { key: "newest" as const, label: "Newest First" },
+                { key: "oldest" as const, label: "Oldest First" },
+                { key: "amount_high" as const, label: "Value: High to Low" },
+                { key: "amount_low" as const, label: "Value: Low to High" },
+              ].map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={styles.filterCheckRow}
+                  onPress={() => setSortBy(opt.key)}
+                >
+                  <Text
+                    style={[
+                      styles.filterCheckLabel,
+                      sortBy === opt.key && styles.filterCheckLabelActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                  {sortBy === opt.key && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color="#2563EB"
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              {/* Status Filter Section */}
+              <Text style={[styles.filterSectionHeader, { marginTop: 18 }]}>
+                STATUS
+              </Text>
+              {[
+                { key: "All" as const, label: "All Quotations" },
+                { key: 0 as const, label: "Draft" },
+                { key: 1 as const, label: "Sent" },
+                { key: 2 as const, label: "Approved" },
+                { key: 3 as const, label: "Rejected" },
+              ].map((tab) => (
+                <TouchableOpacity
+                  key={String(tab.key)}
+                  style={styles.filterCheckRow}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Text
+                    style={[
+                      styles.filterCheckLabel,
+                      activeTab === tab.key && styles.filterCheckLabelActive,
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                  {activeTab === tab.key && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color="#2563EB"
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <View style={styles.filterModalFooter}>
+              <TouchableOpacity
+                style={styles.filterResetBtn}
+                onPress={() => {
+                  setSortBy("newest");
+                  setActiveTab("All");
+                  setSearch("");
+                  setFilterModalVisible(false);
+                }}
+              >
+                <Text style={styles.filterResetBtnText}>Reset</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.filterApplyBtn}
+                onPress={() => setFilterModalVisible(false)}
+              >
+                <Text style={styles.filterApplyBtnText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* VIEW DETAILS MODAL */}
       <Modal
@@ -1709,14 +2155,18 @@ export default function QuotationScreen({
 
                     {(Number(viewingQuotation.is_customer_po) === 1 ||
                       String(viewingQuotation.is_customer_po) === "1" ||
-                      Boolean((viewingQuotation as any).is_customer_po_converted)) && (
+                      Boolean(
+                        (viewingQuotation as any).is_customer_po_converted,
+                      )) && (
                       <View style={styles.poBadge}>
                         <Ionicons
                           name="shield-checkmark"
                           size={11}
                           color="#047857"
                         />
-                        <Text style={styles.poBadgeText}>Customer PO Converted</Text>
+                        <Text style={styles.poBadgeText}>
+                          Customer PO Converted
+                        </Text>
                       </View>
                     )}
 
@@ -1724,20 +2174,20 @@ export default function QuotationScreen({
                       style={[
                         styles.statusBadge,
                         {
-                          backgroundColor: getStatusMeta(viewingQuotation.status).bg,
-                          borderColor: getStatusMeta(viewingQuotation.status).border,
+                          backgroundColor: getStatusMeta(
+                            viewingQuotation.status,
+                          ).bg,
+                          borderColor: getStatusMeta(viewingQuotation.status)
+                            .border,
                         },
                       ]}
                     >
-                      <View
-                        style={[
-                          styles.statusDot,
-                          {
-                            backgroundColor: getStatusMeta(
-                              viewingQuotation.status,
-                            ).dot,
-                          },
-                        ]}
+                      <Ionicons
+                        name={
+                          getStatusMeta(viewingQuotation.status).icon as any
+                        }
+                        size={13}
+                        color={getStatusMeta(viewingQuotation.status).color}
                       />
                       <Text
                         style={[
@@ -1767,7 +2217,9 @@ export default function QuotationScreen({
             {viewLoading && (
               <View style={styles.modalLoadingBar}>
                 <ActivityIndicator size="small" color="#2563EB" />
-                <Text style={styles.modalLoadingText}>Refreshing details...</Text>
+                <Text style={styles.modalLoadingText}>
+                  Refreshing details...
+                </Text>
               </View>
             )}
 
@@ -1778,11 +2230,17 @@ export default function QuotationScreen({
               >
                 {/* Customer & Site */}
                 <View style={styles.viewSectionCard}>
-                  <Text style={styles.viewSectionTitle}>Project & Customer</Text>
+                  <Text style={styles.viewSectionTitle}>
+                    Project & Customer
+                  </Text>
 
                   <View style={styles.viewDetailRow}>
                     <View style={styles.viewDetailLabelGroup}>
-                      <Ionicons name="business-outline" size={14} color="#64748B" />
+                      <Ionicons
+                        name="business-outline"
+                        size={14}
+                        color="#64748B"
+                      />
                       <Text style={styles.viewDetailLabel}>Customer</Text>
                     </View>
                     <Text style={styles.viewDetailValue}>
@@ -1794,7 +2252,11 @@ export default function QuotationScreen({
 
                   <View style={styles.viewDetailRow}>
                     <View style={styles.viewDetailLabelGroup}>
-                      <Ionicons name="location-outline" size={14} color="#64748B" />
+                      <Ionicons
+                        name="location-outline"
+                        size={14}
+                        color="#64748B"
+                      />
                       <Text style={styles.viewDetailLabel}>Delivery Site</Text>
                     </View>
                     <Text style={styles.viewDetailValue}>
@@ -1807,8 +2269,14 @@ export default function QuotationScreen({
                     (viewingQuotation as any)?.sales_executive_name) && (
                     <View style={styles.viewDetailRow}>
                       <View style={styles.viewDetailLabelGroup}>
-                        <Ionicons name="person-outline" size={14} color="#64748B" />
-                        <Text style={styles.viewDetailLabel}>Sales Executive</Text>
+                        <Ionicons
+                          name="person-outline"
+                          size={14}
+                          color="#64748B"
+                        />
+                        <Text style={styles.viewDetailLabel}>
+                          Sales Executive
+                        </Text>
                       </View>
                       <Text style={styles.viewDetailValue}>
                         {viewingQuotation.sales_executive?.label ||
@@ -1825,7 +2293,11 @@ export default function QuotationScreen({
 
                   <View style={styles.viewDetailRow}>
                     <View style={styles.viewDetailLabelGroup}>
-                      <Ionicons name="calendar-outline" size={14} color="#64748B" />
+                      <Ionicons
+                        name="calendar-outline"
+                        size={14}
+                        color="#64748B"
+                      />
                       <Text style={styles.viewDetailLabel}>Quote Date</Text>
                     </View>
                     <Text style={styles.viewDetailValue}>
@@ -1845,7 +2317,11 @@ export default function QuotationScreen({
 
                   <View style={styles.viewDetailRow}>
                     <View style={styles.viewDetailLabelGroup}>
-                      <Ionicons name="receipt-outline" size={14} color="#64748B" />
+                      <Ionicons
+                        name="receipt-outline"
+                        size={14}
+                        color="#64748B"
+                      />
                       <Text style={styles.viewDetailLabel}>Tax Policy</Text>
                     </View>
                     <Text style={styles.viewDetailValue}>
@@ -1858,8 +2334,14 @@ export default function QuotationScreen({
                   {viewingQuotation.pump_type ? (
                     <View style={styles.viewDetailRow}>
                       <View style={styles.viewDetailLabelGroup}>
-                        <Ionicons name="flash-outline" size={14} color="#64748B" />
-                        <Text style={styles.viewDetailLabel}>Pump Requirement</Text>
+                        <Ionicons
+                          name="flash-outline"
+                          size={14}
+                          color="#64748B"
+                        />
+                        <Text style={styles.viewDetailLabel}>
+                          Pump Requirement
+                        </Text>
                       </View>
                       <Text style={styles.viewDetailValue}>
                         {viewingQuotation.pump_type}
@@ -1873,7 +2355,9 @@ export default function QuotationScreen({
 
                 {/* Mix Designs / Line Items */}
                 <View style={styles.viewSectionCard}>
-                  <Text style={styles.viewSectionTitle}>Line Items & Mix Design</Text>
+                  <Text style={styles.viewSectionTitle}>
+                    Line Items & Mix Design
+                  </Text>
 
                   {Array.isArray(viewingQuotation.items) &&
                   viewingQuotation.items.length > 0 ? (
@@ -1889,9 +2373,15 @@ export default function QuotationScreen({
                         lineItem.amount_total || (qty * rate).toFixed(2);
 
                       return (
-                        <View key={lineItem.id || idx} style={styles.viewLineItemCard}>
+                        <View
+                          key={lineItem.id || idx}
+                          style={styles.viewLineItemCard}
+                        >
                           <View style={styles.viewLineItemHeader}>
-                            <Text style={styles.viewLineItemName} numberOfLines={2}>
+                            <Text
+                              style={styles.viewLineItemName}
+                              numberOfLines={2}
+                            >
                               {mixName}
                             </Text>
                             <Text style={styles.viewLineItemTotal}>
@@ -1941,7 +2431,11 @@ export default function QuotationScreen({
                       <View style={styles.viewLineItemGrid}>
                         <View style={styles.viewLineItemPill}>
                           <Text style={styles.viewLineItemPillText}>
-                            Qty: {viewingQuotation.volume || viewingQuotation.quantity || 0} m³
+                            Qty:{" "}
+                            {viewingQuotation.volume ||
+                              viewingQuotation.quantity ||
+                              0}{" "}
+                            m³
                           </Text>
                         </View>
                         {viewingQuotation.rate ? (
@@ -1958,7 +2452,9 @@ export default function QuotationScreen({
 
                 {/* Pricing Summary */}
                 <View style={styles.viewTotalsCard}>
-                  <Text style={styles.viewSectionTitle}>Financial Breakdown</Text>
+                  <Text style={styles.viewSectionTitle}>
+                    Financial Breakdown
+                  </Text>
 
                   {viewingQuotation.amount_untaxed ? (
                     <View style={styles.viewDetailRow}>
@@ -1969,12 +2465,14 @@ export default function QuotationScreen({
                     </View>
                   ) : null}
 
-                  {viewingQuotation.amount_tax || viewingQuotation.tax_amount ? (
+                  {viewingQuotation.amount_tax ||
+                  viewingQuotation.tax_amount ? (
                     <View style={styles.viewDetailRow}>
                       <Text style={styles.viewDetailLabel}>Tax / GST</Text>
                       <Text style={styles.viewDetailValue}>
                         {formatCurrency(
-                          viewingQuotation.amount_tax || viewingQuotation.tax_amount,
+                          viewingQuotation.amount_tax ||
+                            viewingQuotation.tax_amount,
                         )}
                       </Text>
                     </View>
@@ -2002,125 +2500,143 @@ export default function QuotationScreen({
                 {viewingQuotation.notes ? (
                   <View style={styles.viewSectionCard}>
                     <Text style={styles.viewSectionTitle}>Notes & Remarks</Text>
-                    <Text style={styles.viewNotesText}>{viewingQuotation.notes}</Text>
+                    <Text style={styles.viewNotesText}>
+                      {viewingQuotation.notes}
+                    </Text>
                   </View>
                 ) : null}
               </ScrollView>
             ) : null}
 
             {/* Modal Footer Actions */}
-            {viewingQuotation && (() => {
-              const currentStatus = normalizeQuotationStatus(viewingQuotation.status);
-              return (
-                <View style={styles.viewModalFooter}>
-                  {currentStatus === 0 ? (
-                    // Draft status: Show "Sent" button
-                    <TouchableOpacity
-                      style={styles.modalBtnSend}
-                      onPress={() => handleSubmitQuotationStatus(viewingQuotation)}
-                      activeOpacity={0.8}
-                      disabled={Boolean(actionLoading)}
-                    >
-                      {actionLoading === "send" ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Ionicons
-                            name="paper-plane"
-                            size={18}
-                            color="#FFFFFF"
-                          />
-                          <Text style={styles.modalBtnSendText}>Sent</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  ) : currentStatus === 1 ? (
-                    // Sent status: Show Reject and Approve buttons
-                    <>
+            {viewingQuotation &&
+              (() => {
+                const currentStatus = normalizeQuotationStatus(
+                  viewingQuotation.status,
+                );
+                return (
+                  <View style={styles.viewModalFooter}>
+                    {currentStatus === 0 ? (
                       <TouchableOpacity
-                        style={styles.modalBtnReject}
-                        onPress={() => handleOpenRejectModal(viewingQuotation)}
+                        style={styles.modalBtnSend}
+                        onPress={() =>
+                          handleSubmitQuotationStatus(viewingQuotation)
+                        }
                         activeOpacity={0.8}
                         disabled={Boolean(actionLoading)}
                       >
-                        {actionLoading === "reject" ? (
-                          <ActivityIndicator size="small" color="#DC2626" />
-                        ) : (
-                          <>
-                            <Ionicons
-                              name="close-circle-outline"
-                              size={18}
-                              color="#DC2626"
-                            />
-                            <Text style={styles.modalBtnRejectText}>Reject</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.modalBtnApprove}
-                        onPress={() => handleApproveQuotation(viewingQuotation)}
-                        activeOpacity={0.8}
-                        disabled={Boolean(actionLoading)}
-                      >
-                        {actionLoading === "approve" ? (
+                        {actionLoading === "send" ? (
                           <ActivityIndicator size="small" color="#FFFFFF" />
                         ) : (
                           <>
                             <Ionicons
-                              name="checkmark-circle-outline"
+                              name="paper-plane"
                               size={18}
                               color="#FFFFFF"
                             />
-                            <Text style={styles.modalBtnApproveText}>Approve</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    </>
-                  ) : currentStatus === 2 ? (
-                    !(
-                      Number(viewingQuotation.is_customer_po) === 1 ||
-                      String(viewingQuotation.is_customer_po) === "1" ||
-                      Boolean((viewingQuotation as any).is_customer_po_converted)
-                    ) ? (
-                      // Approved status: Show Convert to Customer PO button
-                      <TouchableOpacity
-                        style={styles.modalBtnConvert}
-                        onPress={() => handleConvertToCustomerPO(viewingQuotation)}
-                        activeOpacity={0.8}
-                        disabled={Boolean(actionLoading)}
-                      >
-                        {actionLoading === "convert" ? (
-                          <ActivityIndicator size="small" color="#FFFFFF" />
-                        ) : (
-                          <>
-                            <MaterialCommunityIcons
-                              name="swap-horizontal"
-                              size={20}
-                              color="#FFFFFF"
-                            />
-                            <Text style={styles.modalBtnConvertText}>
-                              Convert to Customer PO
+                            <Text style={styles.modalBtnSendText}>
+                              Send Quotation
                             </Text>
                           </>
                         )}
                       </TouchableOpacity>
-                    ) : (
-                      <View style={styles.modalPoConvertedBadge}>
-                        <Ionicons
-                          name="shield-checkmark"
-                          size={18}
-                          color="#047857"
-                        />
-                        <Text style={styles.modalPoConvertedText}>
-                          Customer PO Converted
-                        </Text>
-                      </View>
-                    )
-                  ) : null}
-                </View>
-              );
-            })()}
+                    ) : currentStatus === 1 ? (
+                      <>
+                        <TouchableOpacity
+                          style={styles.modalBtnReject}
+                          onPress={() =>
+                            handleOpenRejectModal(viewingQuotation)
+                          }
+                          activeOpacity={0.8}
+                          disabled={Boolean(actionLoading)}
+                        >
+                          {actionLoading === "reject" ? (
+                            <ActivityIndicator size="small" color="#DC2626" />
+                          ) : (
+                            <>
+                              <Ionicons
+                                name="close-circle-outline"
+                                size={18}
+                                color="#DC2626"
+                              />
+                              <Text style={styles.modalBtnRejectText}>
+                                Reject
+                              </Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.modalBtnApprove}
+                          onPress={() =>
+                            handleApproveQuotation(viewingQuotation)
+                          }
+                          activeOpacity={0.8}
+                          disabled={Boolean(actionLoading)}
+                        >
+                          {actionLoading === "approve" ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <>
+                              <Ionicons
+                                name="checkmark-circle-outline"
+                                size={18}
+                                color="#FFFFFF"
+                              />
+                              <Text style={styles.modalBtnApproveText}>
+                                Approve
+                              </Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      </>
+                    ) : currentStatus === 2 ? (
+                      !(
+                        Number(viewingQuotation.is_customer_po) === 1 ||
+                        String(viewingQuotation.is_customer_po) === "1" ||
+                        Boolean(
+                          (viewingQuotation as any).is_customer_po_converted,
+                        )
+                      ) ? (
+                        <TouchableOpacity
+                          style={styles.modalBtnConvert}
+                          onPress={() =>
+                            handleConvertToCustomerPO(viewingQuotation)
+                          }
+                          activeOpacity={0.8}
+                          disabled={Boolean(actionLoading)}
+                        >
+                          {actionLoading === "convert" ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <>
+                              <MaterialCommunityIcons
+                                name="swap-horizontal"
+                                size={20}
+                                color="#FFFFFF"
+                              />
+                              <Text style={styles.modalBtnConvertText}>
+                                Convert to Customer PO
+                              </Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.modalPoConvertedBadge}>
+                          <Ionicons
+                            name="shield-checkmark"
+                            size={18}
+                            color="#047857"
+                          />
+                          <Text style={styles.modalPoConvertedText}>
+                            Customer PO Converted
+                          </Text>
+                        </View>
+                      )
+                    ) : null}
+                  </View>
+                );
+              })()}
           </View>
         </View>
       </Modal>
@@ -2177,7 +2693,7 @@ export default function QuotationScreen({
         </View>
       </Modal>
 
-      {/* Animated Custom Alert Modal */}
+      {/* ANIMATED CUSTOM ALERT MODAL */}
       <CustomAlertModal
         visible={alertConfig.visible}
         title={alertConfig.title}
@@ -2193,103 +2709,242 @@ export default function QuotationScreen({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#0B2A4A",
+    backgroundColor: "#063b89",
   },
-  header: {
-    backgroundColor: "#0B2A4A",
+
+  // Gradient Header
+  headerGradient: {
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === "android" ? 14 : 10,
-    paddingBottom: 14,
+    paddingTop: Platform.OS === "android" ? 12 : 8,
+    paddingBottom: 16,
+    position: "relative",
+    overflow: "hidden",
+  },
+  headerBgCircle1: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    top: -60,
+    right: -40,
+  },
+  headerBgCircle2: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    bottom: -20,
+    left: -30,
   },
   headerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  headerTitleGroup: {
-    flex: 1,
-  },
-  headerTitleRow: {
+  headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
+    flex: 1,
   },
   backBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     justifyContent: "center",
     alignItems: "center",
   },
-  headerTitle: {
+  headerTitles: {
+    flex: 1,
+  },
+  headerMainTitle: {
     fontSize: 22,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.3,
   },
-  plantBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
+  headerSubtitle: {
+    fontSize: 12,
+    color: "#BFDBFE",
+    fontWeight: "500",
     marginTop: 2,
   },
-  plantBadgeText: {
-    fontSize: 12,
-    color: "#94A3B8",
-    fontWeight: "500",
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
-  refreshBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  bellBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: "rgba(255, 255, 255, 0.12)",
     justifyContent: "center",
     alignItems: "center",
+    position: "relative",
+  },
+  bellDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#EF4444",
+    position: "absolute",
+    top: 7,
+    right: 8,
+    borderWidth: 1.5,
+    borderColor: "#063b89",
   },
 
-  // Quick KPI Strip
-  kpiContainer: {
-    flexDirection: "row",
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-  },
-  kpiCard: {
-    flex: 1,
+  // Stylized 3D Document Illustration with Growth Arrow Badge
+  headerGraphicWrapper: {
+    position: "relative",
+    width: 46,
+    height: 52,
+    justifyContent: "center",
     alignItems: "center",
   },
-  kpiDivider: {
-    width: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
-    marginVertical: 2,
+  headerDocCard: {
+    width: 38,
+    height: 48,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 6,
+    padding: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
+    transform: [{ rotate: "4deg" }],
   },
-  kpiLabel: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#94A3B8",
-    letterSpacing: 0.5,
+  headerDocTopBar: {
+    height: 4,
+    backgroundColor: "#2563EB",
+    borderRadius: 2,
+    marginBottom: 4,
   },
-  kpiValue: {
-    fontSize: 13,
+  headerDocRupeeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginBottom: 3,
+  },
+  headerDocRupeeText: {
+    fontSize: 10,
     fontWeight: "800",
-    color: "#FFFFFF",
-    marginTop: 2,
+    color: "#1D4ED8",
+  },
+  headerDocRupeeLine: {
+    flex: 1,
+    height: 3,
+    backgroundColor: "#93C5FD",
+    borderRadius: 1.5,
+  },
+  headerDocBodyLine1: {
+    height: 2.5,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 1.5,
+    marginBottom: 2.5,
+  },
+  headerDocBodyLine2: {
+    height: 2.5,
+    width: "70%",
+    backgroundColor: "#CBD5E1",
+    borderRadius: 1.5,
+  },
+  headerDocGrowthBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#F59E0B",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 3,
   },
 
-  // Search Bar
-  searchBar: {
+  // KPI Strip Container
+  kpiContainer: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  kpiItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+  },
+  kpiIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  kpiTextGroup: {
+    flex: 1,
+  },
+  kpiValueText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+    letterSpacing: -0.2,
+  },
+  kpiLabelText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#64748B",
+    marginTop: 1,
+  },
+
+  // Search and Filter Bar Row
+  searchFilterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    backgroundColor: "#F4F7FC",
+    gap: 10,
+  },
+  searchBox: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 42,
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    height: 44,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
   },
   searchInput: {
     flex: 1,
@@ -2298,59 +2953,62 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     paddingVertical: 0,
   },
-
-  // Filter Chips Section
-  filterSection: {
+  filterButton: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    paddingTop: 8,
-    paddingBottom: 6,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    height: 44,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    gap: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 3,
+    elevation: 1,
   },
-  filterScroll: {
+  filterButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#2563EB",
+  },
+
+  // Horizontal Status Tabs Row
+  statusTabsRow: {
+    backgroundColor: "#F4F7FC",
+    paddingBottom: 10,
+  },
+  statusTabsScroll: {
     paddingHorizontal: 16,
     gap: 8,
   },
-  filterChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+  statusPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    gap: 6,
   },
-  filterChipActive: {
+  statusPillActive: {
     backgroundColor: "#2563EB",
     borderColor: "#2563EB",
+    shadowColor: "#2563EB",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  filterChipText: {
+  statusPillText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#64748B",
-  },
-  filterChipTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  filterCountBadge: {
-    backgroundColor: "#E2E8F0",
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 10,
-  },
-  filterCountBadgeActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
-  },
-  filterCountText: {
-    fontSize: 10,
-    fontWeight: "700",
     color: "#475569",
   },
-  filterCountTextActive: {
+  statusPillTextActive: {
     color: "#FFFFFF",
+    fontWeight: "700",
   },
 
   // Error Notice
@@ -2379,52 +3037,65 @@ const styles = StyleSheet.create({
   // List Content
   listContent: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 80,
+    paddingTop: 4,
+    paddingBottom: 85,
   },
 
-  // Card Design (Exact Lead Card Design)
+  // Quotation Card Design (matching exact uploaded UI)
   quoteCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#EEF2F6",
     shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.05,
-    shadowRadius: 6,
+    shadowRadius: 8,
     elevation: 2,
-    marginBottom: 12,
+    marginBottom: 14,
+    overflow: "hidden",
+    position: "relative",
+  },
+  cardLeftStripe: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4.5,
+    borderTopLeftRadius: 18,
+    borderBottomLeftRadius: 18,
+  },
+  cardContent: {
+    paddingLeft: 16,
+    paddingRight: 14,
+    paddingTop: 14,
+    paddingBottom: 14,
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 10,
   },
   quoteNumberBadge: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#EFF6FF",
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 6,
-    gap: 4,
-    flexShrink: 1,
+    borderRadius: 10,
+    gap: 5,
   },
   quoteNumberText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
     color: "#2563EB",
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   badgesRightRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    flexShrink: 0,
   },
   poBadge: {
     flexDirection: "row",
@@ -2432,9 +3103,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#ECFDF5",
     borderWidth: 1,
     borderColor: "#A7F3D0",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
     gap: 3,
   },
   poBadgeText: {
@@ -2445,41 +3116,52 @@ const styles = StyleSheet.create({
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 10,
     borderWidth: 1,
     gap: 4,
-    flexShrink: 0,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
   },
   statusText: {
     fontSize: 11,
     fontWeight: "700",
-    includeFontPadding: false,
   },
 
-  // Project & Contact
-  projectSection: {
-    marginBottom: 10,
-  },
-  projectTitleRow: {
+  // Customer & 3-Dots
+  customerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 8,
+    alignItems: "center",
+    marginBottom: 4,
   },
   projectNameText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
-    lineHeight: 20,
+    letterSpacing: -0.2,
+  },
+  cardOptionsBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  // Location / Site Row
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 12,
+  },
+  contactPersonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#475569",
+    flex: 1,
   },
   pumpBadge: {
     flexDirection: "row",
@@ -2493,29 +3175,20 @@ const styles = StyleSheet.create({
   pumpBadgeText: {
     fontSize: 10,
     fontWeight: "600",
-    color: "#475569",
-  },
-  contactRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 4,
-  },
-  contactPersonText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#334155",
+    color: "#64748B",
   },
 
-  // Core Concrete Specs Grid
+  // 3-Column Specs Grid
   specBox: {
     flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     backgroundColor: "#F8FAFC",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#F1F5F9",
     marginBottom: 10,
   },
   specCol: {
@@ -2525,167 +3198,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginBottom: 2,
+    marginBottom: 3,
   },
   specLabel: {
-    fontSize: 9,
-    fontWeight: "700",
+    fontSize: 10,
+    fontWeight: "600",
     color: "#64748B",
-    letterSpacing: 0.5,
   },
-  specValue: {
+  specMixValue: {
     fontSize: 12,
     fontWeight: "700",
     color: "#0F172A",
   },
-  specDivider: {
-    width: 1,
-    backgroundColor: "#CBD5E1",
-    marginHorizontal: 8,
-  },
-
-  // Dates Bar
-  datesBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#F1F5F9",
-    borderRadius: 6,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    marginBottom: 8,
-  },
-  dateItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  dateLabel: {
-    fontSize: 11,
-    color: "#64748B",
-    fontWeight: "500",
-  },
-  dateVal: {
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-
-  // Card Footer Actions
-  cardFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    paddingTop: 10,
-    marginTop: 2,
-  },
-  footerLeft: {
-    flex: 1,
-    marginRight: 8,
-  },
-  taxInclusiveText: {
-    fontSize: 11,
-    color: "#64748B",
-    fontStyle: "italic",
-  },
-  notesSnippet: {
-    fontSize: 11,
-    color: "#64748B",
-    fontStyle: "italic",
-  },
-  actionButtonsGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  actionViewBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-    gap: 4,
-  },
-  actionViewText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#0F172A",
-  },
-  actionEditBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    gap: 4,
-  },
-  actionEditText: {
-    fontSize: 11,
+  specVolumeValue: {
+    fontSize: 13,
     fontWeight: "700",
     color: "#2563EB",
   },
-  actionConvertBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
-    gap: 4,
+  specTotalValue: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#16A34A",
   },
-  actionConvertText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#047857",
-  },
-  actionDeleteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEF2F2",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#FECACA",
-    gap: 4,
-  },
-  actionDeleteText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#DC2626",
-  },
-  actionConvertedBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F0FDF4",
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#BBF7D0",
-    gap: 4,
-  },
-  actionConvertedText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#15803D",
-  },
-  // Multi-item chips
+
+  // Multi Items Chips
   multiItemsPreviewRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginTop: 8,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   multiItemChip: {
     flexDirection: "row",
@@ -2693,15 +3234,121 @@ const styles = StyleSheet.create({
     backgroundColor: "#EFF6FF",
     borderWidth: 1,
     borderColor: "#DBEAFE",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
     borderRadius: 6,
     gap: 4,
   },
   multiItemChipText: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#1E40AF",
     fontWeight: "600",
+  },
+
+  // Dates Row
+  datesBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  dateItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  dateDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: "#CBD5E1",
+    marginHorizontal: 10,
+  },
+  dateLabel: {
+    fontSize: 11,
+    color: "#64748B",
+  },
+  dateVal: {
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+
+  // Card Footer Buttons
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+    paddingTop: 10,
+  },
+  actionButtonsGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  actionViewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+    gap: 4,
+  },
+  actionViewText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#2563EB",
+  },
+  actionEditBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+    gap: 4,
+  },
+  actionEditText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#2563EB",
+  },
+  actionDeleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    gap: 4,
+  },
+  actionDeleteText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#DC2626",
+  },
+  actionConvertBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    gap: 4,
+  },
+  actionConvertText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#047857",
   },
 
   // Floating Action Button
@@ -2718,14 +3365,14 @@ const styles = StyleSheet.create({
     shadowColor: "#2563EB",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
-    shadowRadius: 6,
+    shadowRadius: 8,
     elevation: 6,
   },
 
-  // Loading & Empty States
+  // Empty & Loading States
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#F4F7FC",
     justifyContent: "center",
     alignItems: "center",
     paddingTop: 60,
@@ -2766,12 +3413,148 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Modals Overlay & Container
-  modalOverlay: {
+  // Action Sheet & Filter Modal Overlay & Containers
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    backgroundColor: "rgba(15, 23, 42, 0.55)",
     justifyContent: "flex-end",
   },
+  actionSheetBox: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === "android" ? 24 : 34,
+    paddingHorizontal: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  sheetTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  sheetSubtitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  sheetCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F1F5F9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sheetOptionsContainer: {
+    paddingTop: 10,
+  },
+  sheetOptionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8FAFC",
+    gap: 12,
+  },
+  sheetIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sheetOptionText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1E293B",
+  },
+
+  // Filter Sheet Container
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "flex-end",
+  },
+  filterSheetContainer: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: "80%",
+    paddingTop: 16,
+    paddingBottom: Platform.OS === "android" ? 20 : 30,
+  },
+  filterSectionHeader: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#64748B",
+    letterSpacing: 0.8,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  filterCheckRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  filterCheckLabel: {
+    fontSize: 14,
+    color: "#334155",
+    fontWeight: "500",
+  },
+  filterCheckLabelActive: {
+    color: "#2563EB",
+    fontWeight: "700",
+  },
+  filterModalFooter: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 12,
+  },
+  filterResetBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#F1F5F9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  filterResetBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  filterApplyBtn: {
+    flex: 2,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#2563EB",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  filterApplyBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+
+  // View Modal Container & Styles
   viewModalContainer: {
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 24,
@@ -3053,23 +3836,6 @@ const styles = StyleSheet.create({
   modalPoConvertedText: {
     color: "#047857",
     fontSize: 14,
-    fontWeight: "700",
-  },
-  modalBtnConvertedBadge: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ECFDF5",
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
-    paddingVertical: 12,
-    borderRadius: 10,
-    gap: 6,
-  },
-  modalBtnConvertedBadgeText: {
-    color: "#047857",
-    fontSize: 13,
     fontWeight: "700",
   },
 

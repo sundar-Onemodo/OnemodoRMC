@@ -523,7 +523,7 @@ export default function EditQuotationScreen({
     useCallback(() => {
       StatusBar.setBarStyle("light-content");
       if (Platform.OS === "android") {
-        StatusBar.setBackgroundColor("#0B2A4A");
+        StatusBar.setBackgroundColor("#063b89");
       }
 
       const onBackPress = () => {
@@ -1895,7 +1895,7 @@ export default function EditQuotationScreen({
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <StatusBar
         barStyle="light-content"
-        backgroundColor="#0B2A4A"
+        backgroundColor="#063b89"
         translucent={false}
       />
 

@@ -34,7 +34,7 @@ export const Colors = {
     surfaceContainerLow: '#F8FAFC',
     surfaceContainerHigh: '#E2E8F0',
     surfaceContainerLowest: '#ffffff',
-    headerBgColor: '#0F172A', // Deep Midnight Navy Header
+    headerBgColor: '#063b89', // Rich Royal Navy Header
     onSurface: '#0f172a',
     onSurfaceVariant: '#475569',
     outline: '#94a3b8',
