@@ -1,4 +1,10 @@
 import { baseURL } from "@/components/baseUrl/baseUrlAPI";
+import {
+  AlertButton,
+  AlertType,
+  CustomAlertModal,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 import { Colors } from "@/constants/theme";
 import { fetchDropdowns, StatusDropdownOption } from "@/store/dropdownSlice";
 import { AppDispatch, RootState } from "@/store/store";
@@ -8,9 +14,9 @@ import {
   MaterialIcons,
 } from "@expo/vector-icons";
 import axios from "axios";
-import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -30,12 +36,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  CustomAlertModal,
-  AlertType,
-  AlertButton,
-  formatSubmissionError,
-} from "@/components/ui/custom-alert-modal";
 
 // ==========================================
 // INTERFACES
@@ -186,15 +186,27 @@ export const formatRate = (val?: number | string | null): string => {
 export const formatDate = (dateStr?: string | null): string => {
   if (!dateStr) return "-";
   try {
-    const clean = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr.split(" ")[0];
+    const clean = dateStr.includes("T")
+      ? dateStr.split("T")[0]
+      : dateStr.split(" ")[0];
     const parts = clean.split("-");
     if (parts.length === 3) {
       const year = parts[0];
       const month = parseInt(parts[1], 10);
       const day = parseInt(parts[2], 10);
       const months = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
       ];
       if (month >= 1 && month <= 12) {
         return `${String(day).padStart(2, "0")} ${months[month - 1]} ${year}`;
@@ -262,9 +274,13 @@ export default function SalesOrderScreen() {
 
   const [search, setSearch] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"All" | number>("All");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "vol_high" | "vol_low">("newest");
+  const [sortBy, setSortBy] = useState<
+    "newest" | "oldest" | "vol_high" | "vol_low"
+  >("newest");
   const [filterModalVisible, setFilterModalVisible] = useState(false);
-  const [cardMenuOrder, setCardMenuOrder] = useState<SalesOrderItem | null>(null);
+  const [cardMenuOrder, setCardMenuOrder] = useState<SalesOrderItem | null>(
+    null,
+  );
 
   // Delete Sales Order State
   const [deletingOrderId, setDeletingOrderId] = useState<number | null>(null);
@@ -286,11 +302,7 @@ export default function SalesOrderScreen() {
   }, []);
 
   const handleBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/more" as any);
-    }
+    router.replace("/more" as any);
   }, []);
 
   useFocusEffect(
@@ -431,7 +443,8 @@ export default function SalesOrderScreen() {
     orders.forEach((o) => {
       const ord = o.progress?.ordered_m3 ?? Number(o.total_qty ?? 0);
       const del = o.progress?.delivered_m3 ?? Number(o.produced_qty ?? 0);
-      const rem = o.progress?.remaining_delivery_m3 ?? Math.max(0, ord - del);
+      const com = o.progress?.committed_m3 ?? 0;
+      const rem = Math.max(0, ord - com);
 
       totalOrdered += isNaN(ord) ? 0 : ord;
       totalDelivered += isNaN(del) ? 0 : del;
@@ -508,7 +521,9 @@ export default function SalesOrderScreen() {
         { label: "In Progress", value: 2, count: counts["2"] || 0 },
         { label: "Completed", value: 3, count: counts["3"] || 0 },
         { label: "Cancelled", value: 4, count: counts["4"] || 0 },
-        ...(counts["0"] ? [{ label: "Draft", value: 0, count: counts["0"] }] : []),
+        ...(counts["0"]
+          ? [{ label: "Draft", value: 0, count: counts["0"] }]
+          : []),
       ];
     }, [counts]);
 
@@ -551,7 +566,10 @@ export default function SalesOrderScreen() {
         });
         fetchOrders(false);
       } catch (err: any) {
-        const errMsg = formatSubmissionError(err, "Failed to delete sales order.");
+        const errMsg = formatSubmissionError(
+          err,
+          "Failed to delete sales order.",
+        );
         setAlertConfig({
           visible: true,
           title: "Delete Failed",
@@ -599,16 +617,16 @@ export default function SalesOrderScreen() {
   const handleEditPress = (order: SalesOrderItem) => {
     const orderedM3 =
       order.progress?.ordered_m3 ?? Number(order.total_qty ?? 0);
+    const committedM3 =
+      order.progress?.committed_m3 ?? 0;
     const deliveredM3 =
       order.progress?.delivered_m3 ?? Number(order.produced_qty ?? 0);
-    const remainingM3 =
-      order.progress?.remaining_delivery_m3 ??
-      Math.max(0, orderedM3 - deliveredM3);
+    const remainingM3 = Math.max(0, orderedM3 - committedM3);
 
     if (!canEditOrder(order.status, orderedM3, remainingM3)) {
       Alert.alert(
         "Cannot Edit Order",
-        "This in-progress order has already delivered concrete and cannot be edited.",
+        "This in-progress order has already committed/delivered concrete and cannot be edited.",
       );
       return;
     }
@@ -637,17 +655,17 @@ export default function SalesOrderScreen() {
     const statusMeta = getSalesOrderStatusMeta(item.status, salesOrderStatuses);
 
     const orderedM3 = item.progress?.ordered_m3 ?? Number(item.total_qty ?? 0);
+    const committedM3 = item.progress?.committed_m3 ?? 0;
     const deliveredM3 =
       item.progress?.delivered_m3 ?? Number(item.produced_qty ?? 0);
-    const remainingM3 =
-      item.progress?.remaining_delivery_m3 ??
-      Math.max(0, orderedM3 - deliveredM3);
+    const remainingM3 = Math.max(0, orderedM3 - committedM3);
 
+    const progressBasis = Math.max(committedM3, deliveredM3);
     const progressPercent =
       orderedM3 > 0
         ? Math.min(
             100,
-            Math.max(0, Math.round((deliveredM3 / orderedM3) * 100)),
+            Math.max(0, Math.round((progressBasis / orderedM3) * 100)),
           )
         : 0;
 
@@ -705,7 +723,11 @@ export default function SalesOrderScreen() {
 
                 {poRef && (
                   <View style={styles.poRefBadge}>
-                    <Ionicons name="receipt-outline" size={11} color="#64748B" />
+                    <Ionicons
+                      name="receipt-outline"
+                      size={11}
+                      color="#64748B"
+                    />
                     <Text style={styles.poRefText} numberOfLines={1}>
                       {poRef}
                     </Text>
@@ -718,7 +740,8 @@ export default function SalesOrderScreen() {
                   styles.statusBadge,
                   {
                     backgroundColor: statusMeta.bgColor,
-                    borderColor: statusMeta.borderColor || statusMeta.color + "30",
+                    borderColor:
+                      statusMeta.borderColor || statusMeta.color + "30",
                   },
                 ]}
               >
@@ -771,7 +794,9 @@ export default function SalesOrderScreen() {
                   {mixName}
                 </Text>
                 {item.rate ? (
-                  <Text style={styles.specSubRate}>{formatRate(item.rate)}/m³</Text>
+                  <Text style={styles.specSubRate}>
+                    {formatRate(item.rate)}/m³
+                  </Text>
                 ) : null}
               </View>
 
@@ -794,19 +819,30 @@ export default function SalesOrderScreen() {
 
               <View style={styles.specDivider} />
 
-              {/* Col 3: DELIVERED */}
+              {/* Col 3: REMAINING (calculated as ordered_m3 - committed_m3) */}
               <View style={styles.specCol}>
                 <View style={styles.specHeaderRow}>
                   <MaterialCommunityIcons
-                    name="truck-check-outline"
+                    name="clock-outline"
                     size={13}
-                    color="#059669"
+                    color={remainingM3 > 0 ? "#D97706" : "#059669"}
                   />
-                  <Text style={styles.specLabel}>Delivered</Text>
+                  <Text style={styles.specLabel}>Remaining</Text>
                 </View>
-                <Text style={styles.specDeliveredValue} numberOfLines={1}>
-                  {formatVolume(deliveredM3)} m³
+                <Text
+                  style={[
+                    styles.specRemainingValue,
+                    { color: remainingM3 > 0 ? "#D97706" : "#059669" },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {formatVolume(remainingM3)} m³
                 </Text>
+                {deliveredM3 > 0 ? (
+                  <Text style={styles.specSubRate}>
+                    Delv: {formatVolume(deliveredM3)} m³
+                  </Text>
+                ) : null}
               </View>
             </View>
 
@@ -819,7 +855,9 @@ export default function SalesOrderScreen() {
                     size={14}
                     color="#2563EB"
                   />
-                  <Text style={styles.progressTitleText}>Fulfillment Progress</Text>
+                  <Text style={styles.progressTitleText}>
+                    Fulfillment Progress
+                  </Text>
                 </View>
                 <Text
                   style={[
@@ -857,6 +895,16 @@ export default function SalesOrderScreen() {
 
               <View style={styles.remainingNoticeRow}>
                 <Text style={styles.remainingLabel}>
+                  Committed:{" "}
+                  <Text style={{ fontWeight: "700", color: "#2563EB" }}>
+                    {formatVolume(committedM3)} m³
+                  </Text>
+                  {"  •  "}
+                  Delivered:{" "}
+                  <Text style={{ fontWeight: "700", color: "#059669" }}>
+                    {formatVolume(deliveredM3)} m³
+                  </Text>
+                  {"  •  "}
                   Remaining:{" "}
                   <Text
                     style={{
@@ -902,16 +950,6 @@ export default function SalesOrderScreen() {
             {/* Card Footer Actions */}
             <View style={styles.cardFooter}>
               <View style={styles.actionButtonsGroup}>
-                {/* View Progress Button */}
-                <TouchableOpacity
-                  style={styles.actionViewBtn}
-                  onPress={() => handleViewProgress(item)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="analytics-outline" size={14} color="#2563EB" />
-                  <Text style={styles.actionViewText}>Progress</Text>
-                </TouchableOpacity>
-
                 {/* Edit Button */}
                 {showEditBtn && (
                   <TouchableOpacity
@@ -1025,7 +1063,11 @@ export default function SalesOrderScreen() {
                 </View>
               </View>
               <View style={styles.headerOrderBadge}>
-                <MaterialIcons name="local-shipping" size={11} color="#FFFFFF" />
+                <MaterialIcons
+                  name="local-shipping"
+                  size={11}
+                  color="#FFFFFF"
+                />
               </View>
             </View>
           </View>
@@ -1289,7 +1331,9 @@ export default function SalesOrderScreen() {
             <View style={styles.filterModalHeader}>
               <View style={styles.filterModalTitleRow}>
                 <Ionicons name="options-outline" size={20} color="#063b89" />
-                <Text style={styles.filterModalTitle}>Filter & Sort Orders</Text>
+                <Text style={styles.filterModalTitle}>
+                  Filter & Sort Orders
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setFilterModalVisible(false)}
@@ -1303,9 +1347,21 @@ export default function SalesOrderScreen() {
             <View style={styles.sortOptionsList}>
               {[
                 { key: "newest", label: "Newest First", icon: "time-outline" },
-                { key: "oldest", label: "Oldest First", icon: "hourglass-outline" },
-                { key: "vol_high", label: "Ordered Vol: High to Low", icon: "trending-up" },
-                { key: "vol_low", label: "Ordered Vol: Low to High", icon: "trending-down" },
+                {
+                  key: "oldest",
+                  label: "Oldest First",
+                  icon: "hourglass-outline",
+                },
+                {
+                  key: "vol_high",
+                  label: "Ordered Vol: High to Low",
+                  icon: "trending-up",
+                },
+                {
+                  key: "vol_low",
+                  label: "Ordered Vol: Low to High",
+                  icon: "trending-down",
+                },
               ].map((opt) => (
                 <TouchableOpacity
                   key={opt.key}
@@ -1335,7 +1391,11 @@ export default function SalesOrderScreen() {
                     </Text>
                   </View>
                   {sortBy === opt.key && (
-                    <Ionicons name="checkmark-circle" size={18} color="#2563EB" />
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={18}
+                      color="#2563EB"
+                    />
                   )}
                 </TouchableOpacity>
               ))}
@@ -1350,7 +1410,9 @@ export default function SalesOrderScreen() {
               }}
               activeOpacity={0.7}
             >
-              <Text style={styles.resetFilterModalBtnText}>Reset to Default</Text>
+              <Text style={styles.resetFilterModalBtnText}>
+                Reset to Default
+              </Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1375,8 +1437,7 @@ export default function SalesOrderScreen() {
             <View style={styles.actionSheetHeader}>
               <View>
                 <Text style={styles.actionSheetTitle}>
-                  {cardMenuOrder?.full_number ||
-                    `SO #${cardMenuOrder?.id}`}
+                  {cardMenuOrder?.full_number || `SO #${cardMenuOrder?.id}`}
                 </Text>
                 <Text style={styles.actionSheetSubtitle} numberOfLines={1}>
                   {cardMenuOrder?.customer?.legal_name ||
@@ -1411,7 +1472,9 @@ export default function SalesOrderScreen() {
                 <Ionicons name="analytics-outline" size={18} color="#2563EB" />
               </View>
               <View style={styles.actionSheetItemContent}>
-                <Text style={styles.actionSheetItemTitle}>View Fulfillment Progress</Text>
+                <Text style={styles.actionSheetItemTitle}>
+                  View Fulfillment Progress
+                </Text>
                 <Text style={styles.actionSheetItemSub}>
                   Batches, transit, dispatched vs delivered
                 </Text>
@@ -1423,7 +1486,14 @@ export default function SalesOrderScreen() {
               canEditOrder(
                 cardMenuOrder.status,
                 cardMenuOrder.progress?.ordered_m3 ?? cardMenuOrder.total_qty,
-                cardMenuOrder.progress?.remaining_delivery_m3,
+                Math.max(
+                  0,
+                  Number(
+                    cardMenuOrder.progress?.ordered_m3 ??
+                      cardMenuOrder.total_qty ??
+                      0,
+                  ) - Number(cardMenuOrder.progress?.committed_m3 ?? 0),
+                ),
               ) && (
                 <TouchableOpacity
                   style={styles.actionSheetItem}
@@ -1443,7 +1513,9 @@ export default function SalesOrderScreen() {
                     <Ionicons name="create-outline" size={18} color="#0D9488" />
                   </View>
                   <View style={styles.actionSheetItemContent}>
-                    <Text style={styles.actionSheetItemTitle}>Edit Sales Order</Text>
+                    <Text style={styles.actionSheetItemTitle}>
+                      Edit Sales Order
+                    </Text>
                     <Text style={styles.actionSheetItemSub}>
                       Update quantities, schedules, and specifications
                     </Text>
@@ -1458,7 +1530,9 @@ export default function SalesOrderScreen() {
                   getSalesOrderStatusMeta(
                     cardMenuOrder.status,
                     salesOrderStatuses,
-                  ).label.toLowerCase().includes("schedule"))) && (
+                  )
+                    .label.toLowerCase()
+                    .includes("schedule"))) && (
                 <TouchableOpacity
                   style={styles.actionSheetItem}
                   onPress={() => {
@@ -2002,6 +2076,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     color: "#059669",
+  },
+  specRemainingValue: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#D97706",
   },
 
   // Fulfillment Progress Section

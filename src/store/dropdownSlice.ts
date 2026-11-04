@@ -121,15 +121,39 @@ export const fetchDropdowns = createAsyncThunk(
         headers["X-Plant-Id"] = String(plant_id);
       }
 
-      const res = await axios.get(`${baseURL}/dropdowns`, {
-        headers,
-        timeout: 15000,
-      });
+      // Fetch both generic /dropdowns and dedicated /sales-executives in parallel
+      const [dropdownsRes, salesExecRes] = await Promise.all([
+        axios.get(`${baseURL}/dropdowns`, { headers, timeout: 15000 }).catch(() => null),
+        axios
+          .get(`${baseURL}/sales-executives`, {
+            headers: {
+              Accept: "application/json",
+              ...(token
+                ? {
+                    Authorization: String(token).trim().startsWith("Bearer")
+                      ? String(token).trim()
+                      : `Bearer ${String(token).trim()}`,
+                  }
+                : {}),
+            },
+            params: { per_page: 20 },
+            timeout: 15000,
+          })
+          .catch(() => null),
+      ]);
 
-      if (res.data?.success && res.data?.data) {
-        return res.data.data;
+      let ddData = dropdownsRes?.data?.data || dropdownsRes?.data || {};
+      const execList =
+        salesExecRes?.data?.data ||
+        salesExecRes?.data?.data?.data ||
+        salesExecRes?.data ||
+        [];
+      if (Array.isArray(execList) && execList.length > 0) {
+        ddData.sales_executives = execList;
+        ddData.salesExecutives = execList;
       }
-      return res.data?.data || res.data;
+
+      return ddData;
     } catch (err: any) {
       console.warn("[Dropdowns API] Thunk error:", err?.message || err);
       return rejectWithValue(err?.message || "Failed to load dropdowns");
@@ -220,10 +244,16 @@ function applyDropdownData(state: DropdownState, data: any) {
   if (Array.isArray(data.customers)) {
     state.customers = data.customers;
   }
+  const cleanExecList = (list: any[]) =>
+    list.filter((se: any) => {
+      const lbl = String(se?.label || se?.name || "").toLowerCase();
+      return !lbl.includes("testing account") && !lbl.includes("testing");
+    });
+
   if (Array.isArray(data.sales_executives)) {
-    state.salesExecutives = data.sales_executives;
+    state.salesExecutives = cleanExecList(data.sales_executives);
   } else if (Array.isArray(data.salesExecutives)) {
-    state.salesExecutives = data.salesExecutives;
+    state.salesExecutives = cleanExecList(data.salesExecutives);
   }
   if (Array.isArray(data.payment_terms)) {
     state.paymentTerms = data.payment_terms;

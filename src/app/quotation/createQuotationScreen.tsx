@@ -1,5 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import axios from "axios";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -69,7 +71,7 @@ export interface CreateQuotationScreenProps {
 }
 
 // ==========================================
-// HELPER FOR INITIAL DATE STRINGS
+// DATE HELPERS
 // ==========================================
 
 const getTodayDateString = () => {
@@ -155,7 +157,9 @@ export default function CreateQuotationScreen({
   onSuccess,
 }: CreateQuotationScreenProps = {}) {
   const dispatch = useDispatch();
-  const { token, plant_id } = useSelector((state: RootState) => state.auth);
+  const { token, plant_id, user } = useSelector(
+    (state: RootState) => state.auth,
+  );
 
   // Route Params from Lead Screen
   const params = useLocalSearchParams<{
@@ -180,6 +184,8 @@ export default function CreateQuotationScreen({
     mixDesignName?: string;
     remarks?: string;
     leadData?: string;
+    plant_id?: string;
+    sales_executive_id?: string;
   }>();
 
   const isFromLead = params.fromLead === "true" || params.returnTo === "/lead";
@@ -193,31 +199,13 @@ export default function CreateQuotationScreen({
     }
   }, [params.leadData]);
 
-  const lastLoggedTimestampRef = useRef<string | null>(null);
-
-  // Log incoming parameters & entire lead payload on screen load (once per navigation)
-  useEffect(() => {
-    if (
-      isFromLead &&
-      params.timestamp &&
-      params.timestamp !== lastLoggedTimestampRef.current
-    ) {
-      lastLoggedTimestampRef.current = params.timestamp;
-      console.log(
-        "[CreateQuotationScreen] Received route params from Lead screen (timestamp: " +
-          params.timestamp +
-          ", leadId: " +
-          (params.leadId || "N/A") +
-          ")",
-      );
-      if (passedLead) {
-        console.log(
-          "[CreateQuotationScreen] Entire lead data payload:",
-          passedLead,
-        );
-      }
-    }
-  }, [isFromLead, params.timestamp, params.leadId, passedLead]);
+  const effectivePlantId =
+    (params.plant_id ? Number(params.plant_id) : null) ??
+    passedLead?.plant_id ??
+    plant_id ??
+    user?.default_plant_id ??
+    (user as any)?.plant_id ??
+    6;
 
   // Redux state for dropdown caches
   const cachedCustomers = useSelector(
@@ -231,6 +219,7 @@ export default function CreateQuotationScreen({
   const cachedSalesExecutives = useSelector(
     (state: RootState) => state.quotation.salesExecutives,
   );
+  const { pumpTypes } = useSelector((state: RootState) => state.dropdowns);
 
   // Form State
   const [selectedCustomerItem, setSelectedCustomerItem] =
@@ -247,7 +236,6 @@ export default function CreateQuotationScreen({
   const [notes, setNotes] = useState<string>(
     "Delivery subject to schedule confirmation",
   );
-  const { pumpTypes } = useSelector((state: RootState) => state.dropdowns);
   const [adjustment, setAdjustment] = useState<string>("0");
 
   useEffect(() => {
@@ -365,7 +353,7 @@ export default function CreateQuotationScreen({
 
   const lastSyncedKeyRef = useRef<string | null>(null);
 
-  // Re-synchronize and refresh form state whenever params change or screen gains focus (prevents stale cached data)
+  // Synchronize form state from Lead or defaults
   const syncFormWithParams = useCallback(
     (
       custs: CustomerDropdownItem[] = cachedCustomers,
@@ -385,9 +373,14 @@ export default function CreateQuotationScreen({
       setValidityDate(getFutureDateString(15));
       setIsTaxInclusive(false);
 
-      if (passedLead?.sales_executive_id && salesExecs.length > 0) {
+      const targetExecId =
+        params.sales_executive_id ||
+        passedLead?.assigned_to ||
+        passedLead?.sales_executive_id ||
+        passedLead?.sales_executive?.id;
+      if (targetExecId && salesExecs.length > 0) {
         const matched = salesExecs.find(
-          (se: any) => Number(se.id) === Number(passedLead.sales_executive_id),
+          (se: any) => Number(se.id) === Number(targetExecId),
         );
         setSelectedSalesExecutiveItem((prev) => prev || matched || null);
       } else {
@@ -395,7 +388,7 @@ export default function CreateQuotationScreen({
       }
 
       if (isFromLead) {
-        // 1. Customer
+        // Customer
         const leadCustId =
           params.customerId && !isNaN(Number(params.customerId))
             ? Number(params.customerId)
@@ -444,7 +437,7 @@ export default function CreateQuotationScreen({
         };
         setSelectedCustomerItem(effectiveCust);
 
-        // 2. Site
+        // Site
         const leadDeliveryLoc = (
           params.deliveryLocation ||
           params.address ||
@@ -496,7 +489,7 @@ export default function CreateQuotationScreen({
         };
         setSelectedSiteItem(effectiveSite);
 
-        // 3. Notes
+        // Notes
         const noteProject = params.projectName || passedLead?.project_name;
         const noteRemarks = params.remarks || passedLead?.remarks;
         if (noteProject || noteRemarks) {
@@ -509,15 +502,20 @@ export default function CreateQuotationScreen({
           setNotes("Delivery subject to schedule confirmation");
         }
 
-        // 4. Mix & Line Items
+        // Mix & Line Items
         const leadMixId =
           params.mixDesignId && !isNaN(Number(params.mixDesignId))
             ? Number(params.mixDesignId)
             : passedLead?.mix_design_id
               ? Number(passedLead.mix_design_id)
-              : null;
+              : passedLead?.mix_design?.id
+                ? Number(passedLead.mix_design.id)
+                : null;
         const leadMixName = (
           params.mixDesignName ||
+          passedLead?.mix_design?.design_name ||
+          passedLead?.mix_design?.name ||
+          passedLead?.mix_design?.code ||
           params.requirement ||
           passedLead?.requirement ||
           ""
@@ -527,7 +525,7 @@ export default function CreateQuotationScreen({
 
         let matchedMix: any = null;
         if (leadMixId && leadMixId > 0 && mixes.length > 0) {
-          matchedMix = mixes.find((m: any) => Number(m.id) === leadMixId);
+          matchedMix = mixes.find((m: any) => Number(m.id) === Number(leadMixId));
         }
         if (!matchedMix && leadMixName && mixes.length > 0) {
           matchedMix = mixes.find((m: any) => {
@@ -542,7 +540,28 @@ export default function CreateQuotationScreen({
           });
         }
 
-        const chosenMix = matchedMix || mixes[0] || null;
+        const chosenMix =
+          matchedMix ||
+          (leadMixId
+            ? {
+                id: leadMixId,
+                design_name:
+                  passedLead?.mix_design?.design_name ||
+                  passedLead?.mix_design?.name ||
+                  params.mixDesignName ||
+                  "Concrete Mix",
+                name:
+                  passedLead?.mix_design?.name ||
+                  passedLead?.mix_design?.design_name ||
+                  params.mixDesignName ||
+                  "Concrete Mix",
+                rate_per_qty:
+                  params.expectedValue || passedLead?.expected_value || "5000",
+              }
+            : null) ||
+          mixes[0] ||
+          null;
+
         const defaultTax =
           txList.find(
             (t: any) =>
@@ -555,8 +574,12 @@ export default function CreateQuotationScreen({
         const initialRate = chosenMix
           ? parseFloat(chosenMix.rate_per_qty || "0") > 0
             ? String(parseFloat(chosenMix.rate_per_qty || "0"))
-            : "5000"
-          : "5000";
+            : params.expectedValue && parseFloat(params.expectedValue) > 0
+              ? String(parseFloat(params.expectedValue))
+              : "5000"
+          : params.expectedValue && parseFloat(params.expectedValue) > 0
+            ? String(parseFloat(params.expectedValue))
+            : "5000";
 
         const leadQty =
           params.estimatedQuantity && parseFloat(params.estimatedQuantity) > 0
@@ -567,15 +590,20 @@ export default function CreateQuotationScreen({
           ? Number(defaultTax.rate || defaultTax.tax_rate || 18)
           : 18;
 
+        const resolvedMixId = chosenMix ? chosenMix.id : leadMixId;
+        const resolvedMixName =
+          chosenMix?.design_name ||
+          chosenMix?.name ||
+          params.mixDesignName ||
+          passedLead?.mix_design?.design_name ||
+          passedLead?.mix_design?.name ||
+          "Concrete Mix";
+
         setItems([
           {
             id: "item-1",
-            mix_design_id: chosenMix ? chosenMix.id : leadMixId,
-            mix_design_name:
-              chosenMix?.design_name ||
-              chosenMix?.name ||
-              params.mixDesignName ||
-              "Concrete Mix",
+            mix_design_id: resolvedMixId,
+            mix_design_name: resolvedMixName,
             quantity: leadQty,
             rate: initialRate,
             tax_id: defaultTax ? defaultTax.id : null,
@@ -599,7 +627,7 @@ export default function CreateQuotationScreen({
           },
         ]);
       } else {
-        // Not from lead: reset to fresh blank quotation
+        // Fresh blank quotation
         if (custs.length > 0) {
           const defaultCust = custs[0];
           setSelectedCustomerItem(defaultCust);
@@ -640,7 +668,8 @@ export default function CreateQuotationScreen({
               quantity: "6",
               rate: initialRate,
               tax_id: defaultTax ? defaultTax.id : null,
-              tax_name: defaultTax?.tax_name || defaultTax?.name || "GST 18%",
+              tax_name:
+                defaultTax?.tax_name || defaultTax?.name || "GST 18% (Sales)",
               tax_rate: Number(defaultTax?.rate || defaultTax?.tax_rate || 18),
               concrete_pump: null,
               pump_rate: "0",
@@ -680,10 +709,13 @@ export default function CreateQuotationScreen({
     ],
   );
 
-  // Back navigation directly to origin route (no .back or goBack)
   const handleBack = useCallback(() => {
     if (onBack) {
       onBack();
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
       return;
     }
     if (isFromLead || params.returnTo === "/lead") {
@@ -697,7 +729,6 @@ export default function CreateQuotationScreen({
     router.replace("/quotation" as any);
   }, [onBack, isFromLead, params.returnTo]);
 
-  // Sync form on mount, on focus, and register hardware back handler
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle("light-content");
@@ -721,7 +752,6 @@ export default function CreateQuotationScreen({
     }, [handleBack, syncFormWithParams]),
   );
 
-  // Sync form whenever route parameters change
   useEffect(() => {
     syncFormWithParams();
   }, [
@@ -735,14 +765,12 @@ export default function CreateQuotationScreen({
     syncFormWithParams,
   ]);
 
-  // Check if master dropdown data is already cached in Redux
   const hasCachedDropdowns =
     cachedCustomers.length > 0 &&
     cachedSites.length > 0 &&
     cachedMixDesigns.length > 0 &&
     cachedSalesExecutives.length > 0;
 
-  // Loading & Submitting State
   const [loadingDropdowns, setLoadingDropdowns] =
     useState<boolean>(!hasCachedDropdowns);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -775,16 +803,12 @@ export default function CreateQuotationScreen({
     new Date().getMonth(),
   );
 
-  // References to prevent duplicate dropdown fetching and avoid effect dependency loops
   const isFetchingDropdownsRef = useRef(false);
   const syncFormWithParamsRef = useRef(syncFormWithParams);
   syncFormWithParamsRef.current = syncFormWithParams;
 
-  // ==========================================
-  // FETCH DROPDOWN APIS ON MOUNT (ONLY IF NOT IN REDUX)
-  // ==========================================
+  // Fetch Dropdown APIs on mount if not in Redux
   useEffect(() => {
-    // If master data is already loaded in Redux, DO NOT fetch from network!
     if (
       cachedCustomers.length > 0 &&
       cachedSites.length > 0 &&
@@ -812,17 +836,13 @@ export default function CreateQuotationScreen({
           ? cleanToken
           : `Bearer ${cleanToken}`;
       }
-      if (plant_id !== null && plant_id !== undefined) {
-        headers["X-Plant-Id"] = String(plant_id);
+      if (effectivePlantId !== null && effectivePlantId !== undefined) {
+        headers["X-Plant-Id"] = String(effectivePlantId);
       }
 
       try {
-        // 1. Fetch Customers
         const customersPromise = axios
-          .get(`${baseURL}/customers`, {
-            headers,
-            params: { page: 1 },
-          })
+          .get(`${baseURL}/customers`, { headers, params: { page: 1 } })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
             if (Array.isArray(list) && list.length > 0) {
@@ -831,17 +851,10 @@ export default function CreateQuotationScreen({
             }
             return [];
           })
-          .catch((err) => {
-            console.log("Error loading customers:", err?.message || err);
-            return [];
-          });
+          .catch(() => []);
 
-        // 2. Fetch Sites
         const sitesPromise = axios
-          .get(`${baseURL}/sites`, {
-            headers,
-            params: { page: 1 },
-          })
+          .get(`${baseURL}/sites`, { headers, params: { page: 1 } })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
             if (Array.isArray(list) && list.length > 0) {
@@ -850,17 +863,10 @@ export default function CreateQuotationScreen({
             }
             return [];
           })
-          .catch((err) => {
-            console.log("Error loading sites:", err?.message || err);
-            return [];
-          });
+          .catch(() => []);
 
-        // 3. Fetch Mix Designs
         const mixDesignsPromise = axios
-          .get(`${baseURL}/mix-designs`, {
-            headers,
-            params: { page: 1 },
-          })
+          .get(`${baseURL}/mix-designs`, { headers, params: { page: 1 } })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
             if (Array.isArray(list) && list.length > 0) {
@@ -869,21 +875,13 @@ export default function CreateQuotationScreen({
             }
             return [];
           })
-          .catch((err) => {
-            console.log("Error loading mix designs:", err?.message || err);
-            return [];
-          });
+          .catch(() => []);
 
-        // 4. Fetch Taxes (use parent taxes where parent_id is null)
         const taxesPromise = axios
-          .get(`${baseURL}/taxes`, {
-            headers,
-            params: { page: 1 },
-          })
+          .get(`${baseURL}/taxes`, { headers, params: { page: 1 } })
           .then((res) => {
             const rawList = res.data?.data?.data || res.data?.data || [];
             if (Array.isArray(rawList) && rawList.length > 0) {
-              // Filter parent taxes only
               const parentTaxes = rawList.filter(
                 (t: any) => t.parent_id === null || t.parent_id === undefined,
               );
@@ -893,27 +891,87 @@ export default function CreateQuotationScreen({
             }
             return [];
           })
-          .catch((err) => {
-            console.log("Error loading taxes:", err?.message || err);
-            return [];
-          });
+          .catch(() => []);
 
-        // 5. Fetch Sales Executives
+        const salesExecParams: Record<string, any> = {
+          per_page: 20,
+          ...(effectivePlantId ? { plant_id: effectivePlantId } : {}),
+        };
+
         const salesExecutivesPromise = axios
           .get(`${baseURL}/sales-executives`, {
             headers,
-            params: plant_id ? { plant_id } : undefined,
+            params: salesExecParams,
+            timeout: 15000,
+          })
+          .catch(async (firstErr) => {
+            console.log(
+              "[CreateQuotation] /sales-executives (with plant_id param) status:",
+              firstErr?.response?.status,
+              firstErr?.response?.data || firstErr?.message,
+            );
+            // Fallback attempt: with headers only and per_page: 20 (no plant_id param)
+            try {
+              return await axios.get(`${baseURL}/sales-executives`, {
+                headers,
+                params: { per_page: 20 },
+                timeout: 15000,
+              });
+            } catch (secondErr: any) {
+              console.log(
+                "[CreateQuotation] /sales-executives (without plant_id param) status:",
+                secondErr?.response?.status,
+                secondErr?.response?.data || secondErr?.message,
+              );
+              // Final fallback attempt: minimal auth-only headers
+              const authOnlyHeaders: Record<string, string> = {
+                Accept: "application/json",
+                ...(token
+                  ? {
+                      Authorization: token.trim().startsWith("Bearer")
+                        ? token.trim()
+                        : `Bearer ${token.trim()}`,
+                    }
+                  : {}),
+              };
+              return await axios.get(`${baseURL}/sales-executives`, {
+                headers: authOnlyHeaders,
+                params: { per_page: 20 },
+                timeout: 15000,
+              });
+            }
           })
           .then((res) => {
-            const list = res.data?.data?.data || res.data?.data || [];
-            if (Array.isArray(list) && list.length > 0) {
+            const rawList =
+              res?.data?.data?.data || res?.data?.data || res?.data || [];
+            const list = Array.isArray(rawList)
+              ? rawList.filter(
+                  (se: any) =>
+                    !String(se?.label || se?.name || "")
+                      .toLowerCase()
+                      .includes("testing account") &&
+                    !String(se?.label || se?.name || "")
+                      .toLowerCase()
+                      .includes("testing"),
+                )
+              : [];
+            console.log(
+              "[CreateQuotation] Fetched /sales-executives successfully, count:",
+              list.length,
+              list,
+            );
+            if (list.length > 0) {
               dispatch(setSalesExecutives(list));
               return list;
             }
             return [];
           })
           .catch((err) => {
-            console.log("Error loading sales executives:", err?.message || err);
+            console.warn(
+              "[CreateQuotation] Failed to fetch sales executives:",
+              err?.message || err,
+              err?.response?.data,
+            );
             return [];
           });
 
@@ -954,11 +1012,9 @@ export default function CreateQuotationScreen({
     return () => {
       isCancelled = true;
     };
-  }, [token, plant_id]);
+  }, [token, plant_id, cachedCustomers, cachedSites, cachedMixDesigns, cachedSalesExecutives, dispatch]);
 
-  // ==========================================
-  // RE-CALCULATE ALL ITEMS WHEN TAX INCLUSIVE CHANGES
-  // ==========================================
+  // Re-calculate all items when tax inclusive changes
   const toggleTaxInclusive = () => {
     const nextVal = !isTaxInclusive;
     setIsTaxInclusive(nextVal);
@@ -979,9 +1035,7 @@ export default function CreateQuotationScreen({
     );
   };
 
-  // ==========================================
-  // ITEM MANAGEMENT
-  // ==========================================
+  // Item Management
   const handleUpdateItem = (
     index: number,
     field: keyof FormLineItem,
@@ -1000,7 +1054,6 @@ export default function CreateQuotationScreen({
         target.pump_rate = clean;
       }
 
-      // Re-run the exact calculation function from quotationCalculation.ts
       const qtyNum =
         parseFloat(field === "quantity" ? value : target.quantity) || 0;
       const rateNum = parseFloat(field === "rate" ? value : target.rate) || 0;
@@ -1049,8 +1102,8 @@ export default function CreateQuotationScreen({
       rate: initialRate,
       tax_id: defaultTax ? defaultTax.id : null,
       tax_name: defaultTax
-        ? defaultTax.tax_name || defaultTax.name || "GST 18%"
-        : "GST 18%",
+        ? defaultTax.tax_name || defaultTax.name || "GST 18% (Sales)"
+        : "GST 18% (Sales)",
       tax_rate: defaultTax
         ? Number(defaultTax.rate || defaultTax.tax_rate || 18)
         : 18,
@@ -1081,9 +1134,7 @@ export default function CreateQuotationScreen({
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // ==========================================
-  // AGGREGATE TOTAL ESTIMATE CALCULATION
-  // ==========================================
+  // Aggregate Total Estimate Calculation
   const totalSummary = useMemo(() => {
     const baseSummary = items.reduce(
       (acc, item) => {
@@ -1107,9 +1158,7 @@ export default function CreateQuotationScreen({
     };
   }, [items, adjustment]);
 
-  // ==========================================
-  // SEARCHABLE PICKER MODAL OPENERS (LIVE API ONLY)
-  // ==========================================
+  // Pickers
   const openCustomerPicker = () => {
     const list = [...cachedCustomers];
     if (
@@ -1135,7 +1184,6 @@ export default function CreateQuotationScreen({
         setSelectedCustomerItem(found);
         if (found) {
           dispatch(setSelectedCustomer(found));
-          // Filter matching sites
           const relatedSite = cachedSites.find((s) =>
             Array.isArray(s.patron_id)
               ? s.patron_id.includes(found.id)
@@ -1182,14 +1230,16 @@ export default function CreateQuotationScreen({
   };
 
   const openSalesExecutivePicker = () => {
-    const list = [...cachedSalesExecutives];
-    if (
-      selectedSalesExecutiveItem &&
-      selectedSalesExecutiveItem.id !== null &&
-      !list.some((se) => se.id === selectedSalesExecutiveItem.id)
-    ) {
-      list.unshift(selectedSalesExecutiveItem);
-    }
+    // Strictly show what is returned from the API (/sales-executives)
+    const list = (cachedSalesExecutives || []).filter(
+      (se) =>
+        !String(se?.label || se?.name || "")
+          .toLowerCase()
+          .includes("testing account") &&
+        !String(se?.label || se?.name || "")
+          .toLowerCase()
+          .includes("testing"),
+    );
 
     const pickerItems: {
       id: number | string | null;
@@ -1200,7 +1250,7 @@ export default function CreateQuotationScreen({
       ...list.map((se) => ({
         id: se.id,
         label: cleanSalesExecutiveName(se.label),
-        subLabel: undefined,
+        subLabel: se.employee_code ? `Code: ${se.employee_code}` : undefined,
       })),
     ];
 
@@ -1247,7 +1297,7 @@ export default function CreateQuotationScreen({
     });
 
     setPickerConfig({
-      title: "Select Concrete Pump",
+      title: "Select Pump Type",
       items: list,
       selectedId: items[itemIndex]?.concrete_pump ?? null,
       onSelect: (item) => {
@@ -1266,7 +1316,7 @@ export default function CreateQuotationScreen({
     const list = cachedMixDesigns;
 
     setPickerConfig({
-      title: "Select Product / Mix Design",
+      title: "Select Product or Mix Design",
       items: list.map((m) => ({
         id: m.id,
         label: m.design_name || m.name || "Concrete Mix",
@@ -1285,7 +1335,6 @@ export default function CreateQuotationScreen({
             found.design_name || found.name || "",
           );
           handleUpdateItem(itemIndex, "mix_design_id", found.id);
-          // If rate is currently empty or 0, autofill default rate
           if (
             parseFloat(found.rate_per_qty || "0") > 0 &&
             (!items[itemIndex].rate || items[itemIndex].rate === "0")
@@ -1346,7 +1395,6 @@ export default function CreateQuotationScreen({
     setPickerModalVisible(true);
   };
 
-  // Filtered picker list based on search
   const filteredPickerItems = useMemo(() => {
     if (!pickerSearch.trim()) return pickerConfig.items;
     const q = pickerSearch.trim().toLowerCase();
@@ -1357,9 +1405,7 @@ export default function CreateQuotationScreen({
     );
   }, [pickerConfig.items, pickerSearch]);
 
-  // ==========================================
-  // CALENDAR MODAL HELPERS
-  // ==========================================
+  // Calendar Modal Helpers
   const openCalendar = (target: "quote" | "validity") => {
     setCalendarTarget(target);
     const currentDateStr = target === "quote" ? quoteDate : validityDate;
@@ -1389,16 +1435,13 @@ export default function CreateQuotationScreen({
     setCalendarModalVisible(false);
   };
 
-  // Days in selected calendar month
   const calendarDays = useMemo(() => {
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-    const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay(); // 0 for Sun
+    const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
     return { daysInMonth, firstDayIndex };
   }, [calendarYear, calendarMonth]);
 
-  // ==========================================
-  // SUBMIT QUOTATION TO LIVE API
-  // ==========================================
+  // Submit Quotation
   const handleSubmitQuotation = async () => {
     const customerIdToSubmit =
       selectedCustomerItem?.id ||
@@ -1421,13 +1464,12 @@ export default function CreateQuotationScreen({
       return;
     }
 
-    // Validate items
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (!isFromLead && !item.mix_design_id) {
+      if (!item.mix_design_id) {
         Alert.alert(
           "Validation",
-          `Please select a Product / Mix Design for Product #${i + 1}.`,
+          `Please select a Product or Mix Design for Product #${i + 1}.`,
         );
         return;
       }
@@ -1466,6 +1508,7 @@ export default function CreateQuotationScreen({
       adjustment: parseFloat(adjustment) || 0,
       items: items.map((it) => {
         const itemObj: Record<string, any> = {
+          mix_design_id: it.mix_design_id ? Number(it.mix_design_id) : null,
           quantity: Number(parseFloat(it.quantity).toFixed(2)),
           rate: Number(parseFloat(it.rate).toFixed(2)),
           tax_id:
@@ -1475,19 +1518,11 @@ export default function CreateQuotationScreen({
           concrete_pump: it.concrete_pump || null,
           pump_rate: parseFloat(it.pump_rate || "0") || 0,
         };
-        if (!isFromLead && it.mix_design_id) {
-          itemObj.mix_design_id = Number(it.mix_design_id);
-        }
         return itemObj;
       }),
     };
 
-    console.log(
-      "\n==================== [CREATE QUOTATION PAYLOAD] ====================\n" +
-        JSON.stringify(payload, null, 2) +
-        "\n====================================================================",
-    );
-    console.log("[CreateQuotationScreen] Payload Object:", payload);
+    console.log("[CreateQuotationScreen] Submitting Payload:", payload);
 
     const headers: Record<string, string> = {
       Accept: "application/json",
@@ -1504,18 +1539,11 @@ export default function CreateQuotationScreen({
     }
 
     try {
-      // Create API call
       const isLeadConvert = Boolean(isFromLead && params.leadId);
       const quotationUrl = isLeadConvert
         ? `${baseURL}/leads/${params.leadId}/quotation`
         : `${baseURL}/quotations`;
       const queryParams = isLeadConvert ? { lead: params.leadId } : undefined;
-
-      console.log(`[Create Quotation] POST ${quotationUrl}`, {
-        params: queryParams,
-        headers,
-        payload,
-      });
 
       await axios.post(quotationUrl, payload, {
         headers,
@@ -1558,8 +1586,13 @@ export default function CreateQuotationScreen({
         translucent={false}
       />
 
-      {/* HEADER */}
-      <View style={styles.header}>
+      {/* HEADER SECTION WITH LINEAR GRADIENT & ISOMETRIC BADGE */}
+      <LinearGradient
+        colors={["#063b89", "#0B4DA8", "#1E62D0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
         <View style={styles.headerTop}>
           <TouchableOpacity
             style={styles.backBtn}
@@ -1571,11 +1604,18 @@ export default function CreateQuotationScreen({
           <View style={styles.headerTitleGroup}>
             <Text style={styles.headerTitle}>Create Quotation</Text>
             <Text style={styles.headerSubtitle}>
-              New draft · Number assigned on save
+              Draft · Number assigned on save
             </Text>
           </View>
+
+          {/* Isometric Document Graphic */}
+          <View style={styles.headerDocIsometric}>
+            <View style={styles.headerDocLine1} />
+            <View style={styles.headerDocLine2} />
+            <View style={styles.headerDocLine3} />
+          </View>
         </View>
-      </View>
+      </LinearGradient>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -1605,525 +1645,540 @@ export default function CreateQuotationScreen({
             <View style={styles.loadingBanner}>
               <ActivityIndicator size="small" color="#2563EB" />
               <Text style={styles.loadingBannerText}>
-                Loading master data (customers, sites, mix designs, taxes)...
+                Loading master data...
               </Text>
             </View>
           )}
 
-          {/* LEAD INFO BANNER (if navigated from lead) */}
-          {isFromLead && (
-            <View style={styles.leadInfoBanner}>
-              <View style={styles.leadInfoBannerLeft}>
-                <View style={styles.leadInfoBannerIcon}>
-                  <Ionicons name="document-text" size={20} color="#0D9488" />
-                </View>
-                <View style={styles.leadInfoBannerTexts}>
-                  <View style={styles.leadInfoBannerHeader}>
-                    <Text style={styles.leadInfoBannerTitle}>
-                      From Lead Screen
-                    </Text>
-                    {params.leadNumber ? (
-                      <View style={styles.leadNumberBadge}>
-                        <Text style={styles.leadNumberBadgeText}>
-                          {params.leadNumber}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Text style={styles.leadInfoBannerSub} numberOfLines={1}>
-                    Customer:{" "}
-                    <Text style={styles.leadInfoBannerBold}>
-                      {selectedCustomerItem?.legal_name ||
-                        params.customerName ||
-                        "N/A"}
-                    </Text>
+          {/* ========================================================================= */}
+          {/* CARD 1: QUOTATION INFORMATION (EXACT UI MATCH) */}
+          {/* ========================================================================= */}
+          <View style={styles.cardContainer}>
+            {/* Card Header */}
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardHeaderIndicator} />
+              <MaterialCommunityIcons
+                name="clipboard-text-outline"
+                size={18}
+                color="#4F46E5"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.cardHeaderTitle}>Quotation Information</Text>
+            </View>
+
+            {/* 2-Column Fields Grid */}
+            <View style={styles.gridRow}>
+              {/* Customer */}
+              <View style={styles.gridCol}>
+                <View style={styles.fieldLabelRow}>
+                  <Ionicons name="person-outline" size={14} color="#4F46E5" />
+                  <Text style={styles.fieldLabel}>
+                    Customer <Text style={styles.requiredAsterisk}>*</Text>
                   </Text>
-                  {params.deliveryLocation || selectedSiteItem?.name ? (
-                    <Text style={styles.leadInfoBannerSub} numberOfLines={1}>
-                      Delivery:{" "}
-                      <Text style={styles.leadInfoBannerBold}>
-                        {selectedSiteItem?.name || params.deliveryLocation}
-                      </Text>
-                    </Text>
-                  ) : null}
-                  <View style={styles.leadLockedInfoPill}>
-                    <Ionicons name="lock-closed" size={12} color="#0D9488" />
-                    <Text style={styles.leadLockedInfoText}>
-                      Lead mode: Mandatory fields are locked. You can edit Sales
-                      Executive and Notes.
-                    </Text>
-                  </View>
                 </View>
+                <TouchableOpacity
+                  style={styles.dropdownInput}
+                  onPress={openCustomerPicker}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownInputText,
+                      !selectedCustomerItem && styles.dropdownPlaceholder,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {selectedCustomerItem?.legal_name || "Select Customer"}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Delivery Site */}
+              <View style={styles.gridCol}>
+                <View style={styles.fieldLabelRow}>
+                  <Ionicons name="location-outline" size={14} color="#4F46E5" />
+                  <Text style={styles.fieldLabel}>
+                    Delivery Site <Text style={styles.requiredAsterisk}>*</Text>
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.dropdownInput}
+                  onPress={openSitePicker}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownInputText,
+                      !selectedSiteItem && styles.dropdownPlaceholder,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {selectedSiteItem?.name || "Select Delivery Site"}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color="#64748B" />
+                </TouchableOpacity>
               </View>
             </View>
-          )}
 
-          {/* 1. CUSTOMER DROPDOWN */}
-          <View style={styles.formGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>
-                Customer <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              {isFromLead &&
-              (selectedCustomerItem?.legal_name || params.customerName) ? (
-                <View style={styles.fromLeadBadge}>
-                  <Ionicons name="flash" size={11} color="#0D9488" />
-                  <Text style={styles.fromLeadBadgeText}>Lead Customer</Text>
+            {/* Row 2: Sales Executive & Validity Date */}
+            <View style={[styles.gridRow, { marginTop: 12 }]}>
+              {/* Sales Executive */}
+              <View style={styles.gridCol}>
+                <View style={styles.fieldLabelRow}>
+                  <Ionicons name="briefcase-outline" size={14} color="#4F46E5" />
+                  <Text style={styles.fieldLabel}>Sales Executive</Text>
                 </View>
-              ) : null}
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.dropdownButton,
-                isFromLead && styles.disabledField,
-              ]}
-              onPress={isFromLead ? undefined : openCustomerPicker}
-              disabled={isFromLead}
-              activeOpacity={isFromLead ? 1 : 0.75}
-            >
-              <Text
-                style={[
-                  styles.dropdownText,
-                  !selectedCustomerItem?.legal_name &&
-                    !params.customerName &&
-                    styles.dropdownPlaceholder,
-                  isFromLead && styles.disabledFieldText,
-                ]}
-                numberOfLines={1}
-              >
-                {selectedCustomerItem?.legal_name ||
-                  params.customerName ||
-                  "Select Customer"}
-              </Text>
-              {isFromLead ? (
-                <Ionicons name="lock-closed" size={16} color="#94A3B8" />
-              ) : (
-                <Ionicons name="chevron-down" size={18} color="#64748B" />
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* 2. DELIVERY SITE DROPDOWN */}
-          <View style={styles.formGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>
-                Delivery Site <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              {isFromLead &&
-              (selectedSiteItem?.name || params.deliveryLocation) ? (
-                <View style={styles.fromLeadBadge}>
-                  <Ionicons name="location" size={11} color="#0D9488" />
-                  <Text style={styles.fromLeadBadgeText}>Lead Location</Text>
-                </View>
-              ) : null}
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.dropdownButton,
-                isFromLead && styles.disabledField,
-              ]}
-              onPress={isFromLead ? undefined : openSitePicker}
-              disabled={isFromLead}
-              activeOpacity={isFromLead ? 1 : 0.75}
-            >
-              <Text
-                style={[
-                  styles.dropdownText,
-                  !selectedSiteItem?.name &&
-                    !params.deliveryLocation &&
-                    styles.dropdownPlaceholder,
-                  isFromLead && styles.disabledFieldText,
-                ]}
-                numberOfLines={1}
-              >
-                {selectedSiteItem?.name ||
-                  params.deliveryLocation ||
-                  "Select Delivery Site"}
-              </Text>
-              {isFromLead ? (
-                <Ionicons name="lock-closed" size={16} color="#94A3B8" />
-              ) : (
-                <Ionicons name="chevron-down" size={18} color="#64748B" />
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* 3. SALES EXECUTIVE DROPDOWN */}
-          <View style={styles.formGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>Sales Executive</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={openSalesExecutivePicker}
-              activeOpacity={0.75}
-            >
-              <Text
-                style={[
-                  styles.dropdownText,
-                  !selectedSalesExecutiveItem && styles.dropdownPlaceholder,
-                ]}
-                numberOfLines={1}
-              >
-                {selectedSalesExecutiveItem
-                  ? cleanSalesExecutiveName(selectedSalesExecutiveItem.label)
-                  : "Select Sales Executive"}
-              </Text>
-              <Ionicons name="chevron-down" size={18} color="#64748B" />
-            </TouchableOpacity>
-          </View>
-
-          {/* 4. VALIDITY DATE CALENDAR */}
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>
-              Validity Date <Text style={styles.requiredAsterisk}>*</Text>
-            </Text>
-            <TouchableOpacity
-              style={[styles.datePickerBtn, isFromLead && styles.disabledField]}
-              onPress={isFromLead ? undefined : () => openCalendar("validity")}
-              disabled={isFromLead}
-              activeOpacity={isFromLead ? 1 : 0.75}
-            >
-              <Ionicons
-                name={isFromLead ? "lock-closed" : "calendar-outline"}
-                size={16}
-                color={isFromLead ? "#94A3B8" : "#2563EB"}
-              />
-              <Text
-                style={[
-                  styles.datePickerBtnText,
-                  isFromLead && styles.disabledFieldText,
-                ]}
-              >
-                {formatDisplayDate(validityDate)}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.productsSectionHeader}>
-            <Text style={styles.productsSectionTitle}>
-              Products & Concrete Mixes ({items.length})
-            </Text>
-          </View>
-
-          {items.map((item, index) => {
-            return (
-              <View
-                key={item.id}
-                style={styles.productCard}
-                onLayout={(e) => {
-                  productYRefs.current[index] = e.nativeEvent.layout.y;
-                }}
-              >
-                {/* Product Header */}
-                <View style={styles.productCardHeader}>
-                  <View style={styles.productIndexBadge}>
-                    <Text style={styles.productIndexText}>#{index + 1}</Text>
-                  </View>
-                  <Text style={styles.productCardTitle}>
-                    {item.mix_design_name || "Concrete Product"}
+                <TouchableOpacity
+                  style={styles.dropdownInput}
+                  onPress={openSalesExecutivePicker}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownInputText,
+                      !selectedSalesExecutiveItem && styles.dropdownPlaceholder,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {selectedSalesExecutiveItem
+                      ? cleanSalesExecutiveName(
+                          selectedSalesExecutiveItem.label,
+                        )
+                      : "Select Sales Executive"}
                   </Text>
+                  <Ionicons name="chevron-down" size={16} color="#64748B" />
+                </TouchableOpacity>
+              </View>
 
-                  {items.length > 1 && !isFromLead && (
-                    <TouchableOpacity
-                      style={styles.deleteProductBtn}
-                      onPress={() => handleRemoveItem(index)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={17}
-                        color="#DC2626"
-                      />
-                    </TouchableOpacity>
-                  )}
+              {/* Validity Date */}
+              <View style={styles.gridCol}>
+                <View style={styles.fieldLabelRow}>
+                  <Ionicons name="calendar-outline" size={14} color="#4F46E5" />
+                  <Text style={styles.fieldLabel}>
+                    Validity Date <Text style={styles.requiredAsterisk}>*</Text>
+                  </Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.datePickerBtn}
+                  onPress={() => openCalendar("validity")}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.dateIconWrapper}>
+                    <Ionicons name="calendar" size={14} color="#4F46E5" />
+                  </View>
+                  <Text style={styles.datePickerBtnText} numberOfLines={1}>
+                    {formatDisplayDate(validityDate)}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
 
-                {/* Product / Mix Design Dropdown (hidden if fromLead) */}
-                {!isFromLead && (
+          {/* ========================================================================= */}
+          {/* CARD 2: PRODUCTS & CONCRETE MIXES (EXACT UI MATCH) */}
+          {/* ========================================================================= */}
+          <View style={styles.cardContainer}>
+            {/* Section Header */}
+            <View style={styles.productsSectionHeader}>
+              <MaterialCommunityIcons
+                name="layers-outline"
+                size={20}
+                color="#4F46E5"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.productsSectionTitle}>
+                Products & Concrete Mixes ({items.length})
+              </Text>
+            </View>
+
+            {/* List of Concrete Product Cards */}
+            {items.map((item, index) => {
+              const itemNumberStr = String(index + 1).padStart(2, "0");
+              return (
+                <View
+                  key={item.id}
+                  style={styles.productCard}
+                  onLayout={(e) => {
+                    productYRefs.current[index] = e.nativeEvent.layout.y;
+                  }}
+                >
+                  {/* Top Bar inside Product Card */}
+                  <View style={styles.productCardTopBar}>
+                    <View style={styles.productCardBadgeRow}>
+                      <View style={styles.productNumberBadge}>
+                        <Text style={styles.productNumberBadgeText}>
+                          {itemNumberStr}
+                        </Text>
+                      </View>
+                      <Text style={styles.productCardTitle}>
+                        Concrete Product
+                      </Text>
+                    </View>
+
+                    {items.length > 1 && (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveItem(index)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="trash-outline" size={17} color="#DC2626" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* 1. Product or Mix Design */}
                   <View style={styles.itemFieldGroup}>
-                    <Text style={styles.label}>
-                      Product or mix design{" "}
-                      <Text style={styles.requiredAsterisk}>*</Text>
-                    </Text>
+                    <View style={styles.fieldLabelRow}>
+                      <MaterialCommunityIcons
+                        name="cube-outline"
+                        size={15}
+                        color="#4F46E5"
+                      />
+                      <Text style={styles.fieldLabel}>
+                        Product or mix design{" "}
+                        <Text style={styles.requiredAsterisk}>*</Text>
+                      </Text>
+                    </View>
                     <TouchableOpacity
-                      style={styles.dropdownButton}
+                      style={styles.dropdownInput}
                       onPress={() => openMixDesignPicker(index)}
                       activeOpacity={0.75}
                     >
                       <Text
                         style={[
-                          styles.dropdownText,
+                          styles.dropdownInputText,
                           !item.mix_design_id && styles.dropdownPlaceholder,
                         ]}
                         numberOfLines={1}
                       >
-                        {item.mix_design_name || "Select Product or Mix Design"}
+                        {item.mix_design_name ||
+                          "Select Product or Mix Design"}
                       </Text>
-                      <Ionicons name="chevron-down" size={18} color="#64748B" />
+                      <Ionicons
+                        name="chevron-down"
+                        size={16}
+                        color="#64748B"
+                      />
                     </TouchableOpacity>
                   </View>
-                )}
 
-                {/* Quantity in m³ & Rate in ₹ (Reference Image Side-by-Side) */}
-                <View style={styles.rowTwoCol}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>
-                      Quantity in m³{" "}
-                      <Text style={styles.requiredAsterisk}>*</Text>
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.textInput,
-                        isFromLead && styles.disabledInput,
-                      ]}
-                      keyboardType="decimal-pad"
-                      value={item.quantity}
-                      editable={!isFromLead}
-                      onChangeText={(val) =>
-                        handleUpdateItem(index, "quantity", val)
-                      }
-                      onFocus={() => handleInputFocus(`product_${index}`)}
-                      onBlur={handleInputBlur}
-                      placeholder="e.g. 6"
-                      placeholderTextColor="#94A3B8"
-                    />
+                  {/* 2. 2-Col: Quantity & Rate */}
+                  <View style={styles.gridRow}>
+                    {/* Quantity in m³ */}
+                    <View style={styles.gridCol}>
+                      <View style={styles.fieldLabelRow}>
+                        <MaterialCommunityIcons
+                          name="cube-outline"
+                          size={15}
+                          color="#4F46E5"
+                        />
+                        <Text style={styles.fieldLabel}>
+                          Quantity in m³{" "}
+                          <Text style={styles.requiredAsterisk}>*</Text>
+                        </Text>
+                      </View>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="decimal-pad"
+                        value={item.quantity}
+                        onChangeText={(val) =>
+                          handleUpdateItem(index, "quantity", val)
+                        }
+                        onFocus={() => handleInputFocus(`product_${index}`)}
+                        onBlur={handleInputBlur}
+                        placeholder="0"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+
+                    {/* Rate in ₹ */}
+                    <View style={styles.gridCol}>
+                      <View style={styles.fieldLabelRow}>
+                        <MaterialCommunityIcons
+                          name="cash-multiple"
+                          size={15}
+                          color="#4F46E5"
+                        />
+                        <Text style={styles.fieldLabel}>
+                          Rate in ₹{" "}
+                          <Text style={styles.requiredAsterisk}>*</Text>
+                        </Text>
+                      </View>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="decimal-pad"
+                        value={item.rate}
+                        onChangeText={(val) =>
+                          handleUpdateItem(index, "rate", val)
+                        }
+                        onFocus={() => handleInputFocus(`product_${index}`)}
+                        onBlur={handleInputBlur}
+                        placeholder="0"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
                   </View>
 
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>
-                      Rate in ₹ <Text style={styles.requiredAsterisk}>*</Text>
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.textInput,
-                        isFromLead && styles.disabledInput,
-                      ]}
-                      keyboardType="decimal-pad"
-                      value={item.rate}
-                      editable={!isFromLead}
-                      onChangeText={(val) =>
-                        handleUpdateItem(index, "rate", val)
-                      }
-                      onFocus={() => handleInputFocus(`product_${index}`)}
-                      onBlur={handleInputBlur}
-                      placeholder="e.g. 5000"
-                      placeholderTextColor="#94A3B8"
-                    />
-                  </View>
-                </View>
-
-                {/* Sales Tax Dropdown */}
-                <View style={styles.itemFieldGroup}>
-                  <Text style={styles.label}>Sales tax</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.dropdownButton,
-                      isFromLead && styles.disabledField,
-                    ]}
-                    onPress={
-                      isFromLead ? undefined : () => openTaxPicker(index)
-                    }
-                    disabled={isFromLead}
-                    activeOpacity={isFromLead ? 1 : 0.75}
-                  >
-                    <Text
-                      style={[
-                        styles.dropdownText,
-                        isFromLead && styles.disabledFieldText,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {item.tax_name || "GST 18%"}
-                    </Text>
-                    {isFromLead ? (
-                      <Ionicons name="lock-closed" size={16} color="#94A3B8" />
-                    ) : (
-                      <Ionicons name="chevron-down" size={18} color="#64748B" />
-                    )}
-                  </TouchableOpacity>
-                </View>
-
-                {/* Pump Type Dropdown & Pump Rate in ₹ (Side-by-Side) */}
-                <View style={styles.rowTwoCol}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Pump type</Text>
+                  {/* 3. Sales Tax */}
+                  <View style={[styles.itemFieldGroup, { marginTop: 12 }]}>
+                    <View style={styles.fieldLabelRow}>
+                      <MaterialCommunityIcons
+                        name="percent"
+                        size={15}
+                        color="#4F46E5"
+                      />
+                      <Text style={styles.fieldLabel}>Sales tax</Text>
+                    </View>
                     <TouchableOpacity
-                      style={styles.dropdownButton}
-                      onPress={() => openPumpPicker(index)}
+                      style={styles.dropdownInput}
+                      onPress={() => openTaxPicker(index)}
                       activeOpacity={0.75}
                     >
-                      <Text
-                        style={[
-                          styles.dropdownText,
-                          !item.concrete_pump && styles.dropdownPlaceholder,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {formatPumpType(item.concrete_pump) || "Select Pump Type"}
+                      <Text style={styles.dropdownInputText} numberOfLines={1}>
+                        {item.tax_name || "GST 18% (Sales)"}
                       </Text>
-                      <Ionicons name="chevron-down" size={18} color="#64748B" />
+                      <Ionicons
+                        name="chevron-down"
+                        size={16}
+                        color="#64748B"
+                      />
                     </TouchableOpacity>
                   </View>
 
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Pump rate in ₹</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      keyboardType="decimal-pad"
-                      value={item.pump_rate ?? "0"}
-                      onChangeText={(val) =>
-                        handleUpdateItem(index, "pump_rate", val)
-                      }
-                      onFocus={() => handleInputFocus(`product_${index}`)}
-                      onBlur={handleInputBlur}
-                      placeholder="0"
-                      placeholderTextColor="#94A3B8"
-                    />
+                  {/* 4. 2-Col: Pump Type & Pump Rate */}
+                  <View style={[styles.gridRow, { marginTop: 12 }]}>
+                    {/* Pump type */}
+                    <View style={styles.gridCol}>
+                      <View style={styles.fieldLabelRow}>
+                        <MaterialCommunityIcons
+                          name="truck-delivery-outline"
+                          size={15}
+                          color="#4F46E5"
+                        />
+                        <Text style={styles.fieldLabel}>Pump type</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.dropdownInput}
+                        onPress={() => openPumpPicker(index)}
+                        activeOpacity={0.75}
+                      >
+                        <Text
+                          style={[
+                            styles.dropdownInputText,
+                            !item.concrete_pump && styles.dropdownPlaceholder,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {formatPumpType(item.concrete_pump) ||
+                            "Select Pump Type"}
+                        </Text>
+                        <Ionicons
+                          name="chevron-down"
+                          size={16}
+                          color="#64748B"
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Pump rate in ₹ */}
+                    <View style={styles.gridCol}>
+                      <View style={styles.fieldLabelRow}>
+                        <MaterialCommunityIcons
+                          name="speedometer"
+                          size={15}
+                          color="#4F46E5"
+                        />
+                        <Text style={styles.fieldLabel}>Pump rate in ₹</Text>
+                      </View>
+                      <TextInput
+                        style={styles.textInput}
+                        keyboardType="decimal-pad"
+                        value={item.pump_rate}
+                        onChangeText={(val) =>
+                          handleUpdateItem(index, "pump_rate", val)
+                        }
+                        onFocus={() => handleInputFocus(`product_${index}`)}
+                        onBlur={handleInputBlur}
+                        placeholder="0"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                  </View>
+
+                  {/* Calculations Strip inside Product Card */}
+                  <View style={styles.calcStrip}>
+                    <View style={styles.calcStripItem}>
+                      <Text style={styles.calcStripLabel}>Material Untaxed</Text>
+                      <Text style={styles.calcStripValue}>
+                        ₹
+                        {formatAmountWithDecimals(
+                          item.calculation.materialUntaxed ||
+                            item.calculation.untaxedAmount,
+                        )}
+                      </Text>
+                    </View>
+
+                    <View style={styles.calcStripItem}>
+                      <Text style={styles.calcStripLabel}>
+                        Tax ({item.tax_rate}%)
+                      </Text>
+                      <Text style={styles.calcStripValue}>
+                        ₹{formatAmountWithDecimals(item.calculation.taxAmount)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.calcItemTotalBox}>
+                      <Text style={styles.calcItemTotalLabel}>Item Total</Text>
+                      <Text style={styles.calcItemTotalValue}>
+                        ₹{formatAmountWithDecimals(item.calculation.amountTotal)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
+              );
+            })}
 
-                {/* Line Item Calculated Subtotal Strip */}
-                <View style={styles.lineItemCalcBox}>
-                  <View>
-                    <Text style={styles.lineItemCalcLabel}>
-                      Material Untaxed
-                    </Text>
-                    <Text style={styles.lineItemCalcValue}>
-                      ₹
-                      {formatAmountWithDecimals(item.calculation.untaxedAmount)}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "center" }}>
-                    <Text style={styles.lineItemCalcLabel}>
-                      Tax ({item.tax_rate}%)
-                    </Text>
-                    <Text style={styles.lineItemCalcValue}>
-                      ₹{formatAmountWithDecimals(item.calculation.taxAmount)}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={styles.lineItemCalcLabelTotal}>
-                      Item Total
-                    </Text>
-                    <Text style={styles.lineItemCalcValueTotal}>
-                      ₹{formatAmountWithDecimals(item.calculation.amountTotal)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-
-          {/* ADD ANOTHER PRODUCT BUTTON */}
-          {!isFromLead && (
+            {/* "+ Add another product" Dashed Button */}
             <TouchableOpacity
-              style={styles.addProductButton}
+              style={styles.addProductDashedBtn}
               onPress={handleAddItem}
-              activeOpacity={0.8}
+              activeOpacity={0.75}
             >
               <Ionicons name="add-circle-outline" size={18} color="#2563EB" />
-              <Text style={styles.addProductButtonText}>
-                + Add another product
+              <Text style={styles.addProductDashedBtnText}>
+                Add another product
               </Text>
             </TouchableOpacity>
-          )}
 
-          {/* 5. TAX INCLUSIVE RATE TOGGLE (MATCHES REFERENCE IMAGE) */}
-          <TouchableOpacity
-            style={[styles.taxInclusiveBox, isFromLead && { opacity: 0.6 }]}
-            onPress={isFromLead ? undefined : toggleTaxInclusive}
-            disabled={isFromLead}
-            activeOpacity={0.8}
-          >
-            <View
-              style={[
-                styles.checkboxBox,
-                isTaxInclusive && styles.checkboxBoxChecked,
-              ]}
+            {/* "Tax inclusive rate" Row */}
+            <TouchableOpacity
+              style={styles.taxInclusiveRow}
+              onPress={toggleTaxInclusive}
+              activeOpacity={0.7}
             >
-              {isTaxInclusive && (
-                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-              )}
-            </View>
-            <Text style={styles.taxInclusiveText}>Tax inclusive rate</Text>
-          </TouchableOpacity>
+              <Ionicons
+                name={
+                  isTaxInclusive
+                    ? "checkbox"
+                    : "square-outline"
+                }
+                size={20}
+                color={isTaxInclusive ? "#2563EB" : "#94A3B8"}
+              />
+              <Text style={styles.taxInclusiveText}>Tax inclusive rate</Text>
+            </TouchableOpacity>
+          </View>
 
-          {/* 6. TERMS / NOTES */}
+          {/* ========================================================================= */}
+          {/* CARD 3: TERMS / NOTES (EXACT UI MATCH) */}
+          {/* ========================================================================= */}
           <View
-            style={styles.formGroup}
+            style={styles.cardContainer}
             onLayout={(e) => {
               notesYRef.current = e.nativeEvent.layout.y;
             }}
           >
-            <Text style={styles.label}>Terms / notes</Text>
+            <View style={styles.cardHeaderRow}>
+              <Ionicons
+                name="document-text-outline"
+                size={18}
+                color="#4F46E5"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.cardHeaderTitle}>Terms / Notes</Text>
+            </View>
+
             <TextInput
-              style={styles.notesInput}
+              style={styles.notesTextInput}
               multiline
-              numberOfLines={4}
               value={notes}
               onChangeText={setNotes}
               onFocus={() => handleInputFocus("notes")}
               onBlur={handleInputBlur}
-              placeholder="Delivery schedule, special pumping terms, site access..."
+              placeholder="Delivery subject to schedule confirmation"
               placeholderTextColor="#94A3B8"
             />
           </View>
 
-          {/* 7. TOTAL ESTIMATE BOX (MATCHES REFERENCE IMAGE) */}
+          {/* ========================================================================= */}
+          {/* CARD 4: TOTAL ESTIMATE (EXACT UI MATCH) */}
+          {/* ========================================================================= */}
           <View
-            style={styles.totalEstimateCard}
+            style={styles.cardContainer}
             onLayout={(e) => {
               estimateYRef.current = e.nativeEvent.layout.y;
             }}
           >
-            <View style={styles.totalEstimateHeaderRow}>
-              <Text style={styles.totalEstimateLabel}>Total estimate</Text>
-              <Text style={styles.totalEstimateAmount}>
-                ₹{formatAmountWithDecimals(totalSummary.amountTotal)}
-              </Text>
+            {/* Top Estimate Row */}
+            <View style={styles.estimateTopRow}>
+              <View style={styles.estimateLeftGroup}>
+                <View style={styles.estimateTitleRow}>
+                  <Ionicons
+                    name="calculator-outline"
+                    size={18}
+                    color="#4F46E5"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.cardHeaderTitle}>Total Estimate</Text>
+                </View>
+                <Text style={styles.estimateSubtext}>
+                  Untaxed: ₹
+                  {formatAmountWithDecimals(totalSummary.untaxedAmount)} · Tax: ₹
+                  {formatAmountWithDecimals(totalSummary.taxAmount)}
+                </Text>
+              </View>
+
+              <View style={styles.estimateBadge}>
+                <Text style={styles.estimateBadgeText}>
+                  ₹{formatAmountWithDecimals(totalSummary.amountTotal)}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.totalEstimateBreakdownRow}>
-              <Text style={styles.totalEstimateBreakdownText}>
-                Untaxed: ₹{formatAmountWithDecimals(totalSummary.untaxedAmount)}{" "}
-                · Tax: ₹{formatAmountWithDecimals(totalSummary.taxAmount)}
-              </Text>
-            </View>
-
-            <View style={styles.estimateAdjustmentContainer}>
-              <Text style={styles.estimateAdjustmentLabel}>Adjustment in ₹</Text>
+            {/* Adjustment Row */}
+            <View style={styles.adjustmentRow}>
+              <View style={styles.fieldLabelRow}>
+                <Ionicons name="create-outline" size={14} color="#4F46E5" />
+                <Text style={styles.fieldLabel}>Adjustment in ₹</Text>
+              </View>
               <TextInput
-                style={styles.estimateAdjustmentInput}
+                style={styles.textInput}
                 keyboardType="decimal-pad"
                 value={adjustment}
                 onChangeText={handleAdjustmentChange}
                 onFocus={() => handleInputFocus("adjustment")}
                 onBlur={handleInputBlur}
-                placeholder="0.00"
+                placeholder="0"
                 placeholderTextColor="#94A3B8"
               />
             </View>
 
-            <View style={styles.adjustmentCalcRow}>
-              <Text style={styles.adjustmentCalcText}>
-                Amount: ₹{formatAmountWithDecimals(totalSummary.itemsAmountTotal)} +
+            {/* Blue Banner Summary Formula */}
+            <View style={styles.summaryFormulaBanner}>
+              <MaterialCommunityIcons
+                name="cash-multiple"
+                size={18}
+                color="#1D4ED8"
+              />
+              <Text style={styles.summaryFormulaText} numberOfLines={1}>
+                Amount: ₹
+                {formatAmountWithDecimals(totalSummary.itemsAmountTotal)} +
                 Adjust: ₹{formatAmountWithDecimals(totalSummary.adjustment)} = ₹
                 {formatAmountWithDecimals(totalSummary.amountTotal)}
               </Text>
             </View>
 
-            <Text style={styles.totalEstimateFooterNote}>
+            {/* Commercial Quote Footnote */}
+            <Text style={styles.estimateFootnote}>
               Commercial quote estimate · Ready for plant dispatch
             </Text>
           </View>
 
-          {/* 8. SUBMIT ACTION BUTTONS (MATCHES REFERENCE IMAGE) */}
+          {/* ========================================================================= */}
+          {/* PRIMARY SUBMIT ACTION BUTTON */}
+          {/* ========================================================================= */}
           <TouchableOpacity
-            style={[
-              styles.saveDraftButton,
-              isSubmitting && styles.saveDraftButtonDisabled,
-            ]}
+            style={styles.primarySubmitBtn}
             onPress={handleSubmitQuotation}
             disabled={isSubmitting}
             activeOpacity={0.85}
@@ -2131,88 +2186,93 @@ export default function CreateQuotationScreen({
             {isSubmitting ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveDraftButtonText}>Create Quotation</Text>
+              <>
+                <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.primarySubmitBtnText}>Create Quotation</Text>
+              </>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.cancelButton}
+            style={styles.cancelBtn}
             onPress={handleBack}
             activeOpacity={0.7}
           >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* ========================================================================= */}
+      {/* SEARCHABLE PICKER MODAL */}
+      {/* ========================================================================= */}
       <Modal
         visible={pickerModalVisible}
-        transparent={true}
-        animationType="slide"
+        transparent
+        animationType="fade"
         onRequestClose={() => setPickerModalVisible(false)}
       >
-        <View style={styles.pickerModalOverlay}>
-          <View style={styles.pickerModalContent}>
-            {/* Modal Title & Close */}
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setPickerModalVisible(false)}
+        >
+          <View
+            style={styles.pickerModalContent}
+            onStartShouldSetResponder={() => true}
+          >
             <View style={styles.pickerModalHeader}>
               <Text style={styles.pickerModalTitle}>{pickerConfig.title}</Text>
               <TouchableOpacity
-                style={styles.pickerCloseCircle}
                 onPress={() => setPickerModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="close" size={20} color="#64748B" />
+                <Ionicons name="close" size={22} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            {/* Search Input */}
-            <View style={styles.pickerSearchBox}>
-              <Ionicons name="search" size={17} color="#94A3B8" />
-              <TextInput
-                style={styles.pickerSearchInput}
-                placeholder="Search..."
-                placeholderTextColor="#94A3B8"
-                value={pickerSearch}
-                onChangeText={setPickerSearch}
-                clearButtonMode="while-editing"
-                autoFocus
-              />
-              {pickerSearch.length > 0 && (
-                <TouchableOpacity onPress={() => setPickerSearch("")}>
-                  <Ionicons name="close-circle" size={16} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
-            </View>
+            {pickerConfig.items.length > 5 && (
+              <View style={styles.pickerSearchBox}>
+                <Ionicons name="search" size={16} color="#94A3B8" />
+                <TextInput
+                  style={styles.pickerSearchInput}
+                  placeholder="Search..."
+                  placeholderTextColor="#94A3B8"
+                  value={pickerSearch}
+                  onChangeText={setPickerSearch}
+                />
+              </View>
+            )}
 
-            {/* Items List */}
             <FlatList
               data={filteredPickerItems}
-              keyExtractor={(item) => String(item.id ?? "null-id")}
-              keyboardShouldPersistTaps="handled"
+              keyExtractor={(item, index) =>
+                item.id !== null ? String(item.id) : `null-${index}`
+              }
               renderItem={({ item }) => {
                 const isSelected = item.id === pickerConfig.selectedId;
                 return (
                   <TouchableOpacity
                     style={[
                       styles.pickerItemRow,
-                      isSelected && styles.pickerItemRowSelected,
+                      isSelected && styles.pickerItemRowActive,
                     ]}
                     onPress={() => {
                       pickerConfig.onSelect(item);
                       setPickerModalVisible(false);
                     }}
-                    activeOpacity={0.7}
                   >
                     <View style={{ flex: 1 }}>
                       <Text
                         style={[
                           styles.pickerItemLabel,
-                          isSelected && styles.pickerItemLabelSelected,
+                          isSelected && styles.pickerItemLabelActive,
                         ]}
                       >
                         {item.label}
                       </Text>
                       {item.subLabel ? (
-                        <Text style={styles.pickerItemSub}>
+                        <Text style={styles.pickerItemSubLabel}>
                           {item.subLabel}
                         </Text>
                       ) : null}
@@ -2220,47 +2280,54 @@ export default function CreateQuotationScreen({
                     {isSelected && (
                       <Ionicons
                         name="checkmark-circle"
-                        size={20}
+                        size={18}
                         color="#2563EB"
                       />
                     )}
                   </TouchableOpacity>
                 );
               }}
-              ListEmptyComponent={
-                <View style={styles.pickerEmptyContainer}>
-                  <Text style={styles.pickerEmptyText}>No matches found</Text>
-                </View>
-              }
+              style={{ maxHeight: 340 }}
             />
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
+      {/* ========================================================================= */}
+      {/* INTERACTIVE CALENDAR MODAL */}
+      {/* ========================================================================= */}
       <Modal
         visible={calendarModalVisible}
-        transparent={true}
+        transparent
         animationType="fade"
         onRequestClose={() => setCalendarModalVisible(false)}
       >
-        <View style={styles.calendarModalOverlay}>
-          <View style={styles.calendarModalContent}>
-            {/* Calendar Header */}
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setCalendarModalVisible(false)}
+        >
+          <View
+            style={styles.calendarModalContent}
+            onStartShouldSetResponder={() => true}
+          >
             <View style={styles.calendarModalHeader}>
               <Text style={styles.calendarModalTitle}>
                 {calendarTarget === "quote"
-                  ? "Select Quote Date"
+                  ? "Select Quotation Date"
                   : "Select Validity Date"}
               </Text>
-              <TouchableOpacity onPress={() => setCalendarModalVisible(false)}>
-                <Ionicons name="close" size={20} color="#64748B" />
+              <TouchableOpacity
+                onPress={() => setCalendarModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            {/* Month & Year Navigation */}
-            <View style={styles.monthNavRow}>
+            {/* Month / Year Navigator */}
+            <View style={styles.calendarMonthRow}>
               <TouchableOpacity
-                style={styles.monthNavBtn}
                 onPress={() => {
                   if (calendarMonth === 0) {
                     setCalendarMonth(11);
@@ -2269,11 +2336,12 @@ export default function CreateQuotationScreen({
                     setCalendarMonth((m) => m - 1);
                   }
                 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="chevron-back" size={18} color="#2563EB" />
+                <Ionicons name="chevron-back" size={20} color="#0F172A" />
               </TouchableOpacity>
 
-              <Text style={styles.monthNavTitle}>
+              <Text style={styles.calendarMonthText}>
                 {
                   [
                     "January",
@@ -2294,7 +2362,6 @@ export default function CreateQuotationScreen({
               </Text>
 
               <TouchableOpacity
-                style={styles.monthNavBtn}
                 onPress={() => {
                   if (calendarMonth === 11) {
                     setCalendarMonth(0);
@@ -2303,144 +2370,100 @@ export default function CreateQuotationScreen({
                     setCalendarMonth((m) => m + 1);
                   }
                 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="chevron-forward" size={18} color="#2563EB" />
+                <Ionicons name="chevron-forward" size={20} color="#0F172A" />
               </TouchableOpacity>
             </View>
 
-            {/* Quick Presets */}
-            {calendarTarget === "validity" && (
-              <View style={styles.presetsRow}>
-                {[7, 15, 30].map((days) => (
-                  <TouchableOpacity
-                    key={days}
-                    style={styles.presetChip}
-                    onPress={() => {
-                      setValidityDate(getFutureDateString(days));
-                      setCalendarModalVisible(false);
-                    }}
-                  >
-                    <Text style={styles.presetChipText}>+{days} Days</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Day of Week Headers */}
-            <View style={styles.dayOfWeekRow}>
-              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d, i) => (
-                <Text key={i} style={styles.dayOfWeekText}>
-                  {d}
+            {/* Weekdays Header */}
+            <View style={styles.calendarWeekdaysRow}>
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((w) => (
+                <Text key={w} style={styles.calendarWeekdayText}>
+                  {w}
                 </Text>
               ))}
             </View>
 
             {/* Calendar Days Grid */}
-            <View style={styles.daysGrid}>
-              {/* Empty leading slots */}
+            <View style={styles.calendarDaysGrid}>
               {Array.from({ length: calendarDays.firstDayIndex }).map(
-                (_, index) => (
-                  <View key={`empty-${index}`} style={styles.dayCellEmpty} />
+                (_, idx) => (
+                  <View key={`empty-${idx}`} style={styles.calendarDayCell} />
                 ),
               )}
+              {Array.from({ length: calendarDays.daysInMonth }).map((_, idx) => {
+                const dayNum = idx + 1;
+                const mStr = String(calendarMonth + 1).padStart(2, "0");
+                const dStr = String(dayNum).padStart(2, "0");
+                const thisDateStr = `${calendarYear}-${mStr}-${dStr}`;
+                const isSelected =
+                  calendarTarget === "quote"
+                    ? quoteDate === thisDateStr
+                    : validityDate === thisDateStr;
 
-              {/* Day cells */}
-              {Array.from({ length: calendarDays.daysInMonth }).map(
-                (_, index) => {
-                  const day = index + 1;
-                  const currentMonthStr = String(calendarMonth + 1).padStart(
-                    2,
-                    "0",
-                  );
-                  const currentDayStr = String(day).padStart(2, "0");
-                  const cellDateStr = `${calendarYear}-${currentMonthStr}-${currentDayStr}`;
-                  const isSelected =
-                    calendarTarget === "quote"
-                      ? quoteDate === cellDateStr
-                      : validityDate === cellDateStr;
-
-                  return (
-                    <TouchableOpacity
-                      key={`day-${day}`}
+                return (
+                  <TouchableOpacity
+                    key={`day-${dayNum}`}
+                    style={[
+                      styles.calendarDayCell,
+                      isSelected && styles.calendarDayCellSelected,
+                    ]}
+                    onPress={() => handleSelectCalendarDate(dayNum)}
+                  >
+                    <Text
                       style={[
-                        styles.dayCell,
-                        isSelected && styles.dayCellSelected,
+                        styles.calendarDayText,
+                        isSelected && styles.calendarDayTextSelected,
                       ]}
-                      onPress={() => handleSelectCalendarDate(day)}
                     >
-                      <Text
-                        style={[
-                          styles.dayCellText,
-                          isSelected && styles.dayCellTextSelected,
-                        ]}
-                      >
-                        {day}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                },
-              )}
+                      {dayNum}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  disabledField: {
-    backgroundColor: "#F1F5F9",
-    borderColor: "#CBD5E1",
-  },
-  disabledFieldText: {
-    color: "#64748B",
-  },
-  disabledInput: {
-    backgroundColor: "#F1F5F9",
-    borderColor: "#CBD5E1",
-    color: "#475569",
-  },
-  leadLockedInfoPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#F0FDFA",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#CCFBF1",
-    marginTop: 6,
-  },
-  leadLockedInfoText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#0F766E",
-    flex: 1,
-  },
+// ==========================================
+// STYLES (EXACT 1:1 REPLICATION OF IMAGE)
+// ==========================================
 
+const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#0B2A4A",
+    backgroundColor: "#063b89",
   },
-  header: {
-    backgroundColor: "#0B2A4A",
+  container: {
+    flex: 1,
+    backgroundColor: "#F3F7FB",
+  },
+  scrollContent: {
+    padding: 14,
+    paddingBottom: 40,
+  },
+
+  // Gradient Header
+  headerGradient: {
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === "android" ? 14 : 10,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1E3A5F",
+    paddingTop: Platform.OS === "android" ? 12 : 8,
+    paddingBottom: 16,
   },
   headerTop: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -2449,637 +2472,557 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.2,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: "#94A3B8",
+    color: "rgba(255, 255, 255, 0.75)",
+    fontWeight: "500",
     marginTop: 2,
   },
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
+
+  // Isometric Document Graphic
+  headerDocIsometric: {
+    width: 38,
+    height: 44,
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    borderRadius: 8,
+    padding: 5,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.95)",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 40,
+  headerDocLine1: {
+    height: 3,
+    backgroundColor: "#2563EB",
+    borderRadius: 1.5,
+    width: "70%",
+    marginBottom: 4,
   },
-  loadingBanner: {
+  headerDocLine2: {
+    height: 3,
+    backgroundColor: "#93C5FD",
+    borderRadius: 1.5,
+    width: "85%",
+    marginBottom: 4,
+  },
+  headerDocLine3: {
+    height: 3,
+    backgroundColor: "#CBD5E1",
+    borderRadius: 1.5,
+    width: "50%",
+  },
+
+  // Card Container
+  cardContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 14,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 12,
-    gap: 8,
-  },
-  loadingBannerText: {
-    flex: 1,
-    fontSize: 11,
-    color: "#2563EB",
-    fontWeight: "600",
-  },
-  formGroup: {
     marginBottom: 14,
   },
-  itemFieldGroup: {
-    marginBottom: 12,
+  cardHeaderIndicator: {
+    width: 3.5,
+    height: 16,
+    borderRadius: 2,
+    backgroundColor: "#4F46E5",
+    marginRight: 8,
   },
-  label: {
-    fontSize: 13,
+  cardHeaderTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+
+  // 2-Column Grid Layout
+  gridRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  gridCol: {
+    flex: 1,
+  },
+  fieldLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 5,
+  },
+  fieldLabel: {
+    fontSize: 12,
     fontWeight: "600",
-    color: "#475569",
-    marginBottom: 6,
+    color: "#334155",
   },
   requiredAsterisk: {
     color: "#EF4444",
+    fontWeight: "700",
   },
-  dropdownButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+
+  // Inputs
+  dropdownInput: {
+    height: 42,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E2E8F0",
     borderRadius: 10,
-    paddingHorizontal: 14,
-    height: 48,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.02,
-    shadowRadius: 2,
-    elevation: 1,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  dropdownText: {
-    fontSize: 14,
-    fontWeight: "600",
+  dropdownInputText: {
+    fontSize: 13,
     color: "#0F172A",
+    fontWeight: "600",
     flex: 1,
+    marginRight: 6,
   },
   dropdownPlaceholder: {
     color: "#94A3B8",
     fontWeight: "400",
   },
-  rowTwoCol: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 14,
-  },
   textInput: {
+    height: 42,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E2E8F0",
     borderRadius: 10,
-    paddingHorizontal: 14,
-    height: 48,
-    fontSize: 14,
+    paddingHorizontal: 12,
+    fontSize: 13,
     color: "#0F172A",
     fontWeight: "600",
   },
   datePickerBtn: {
+    height: 42,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 10,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 48,
     gap: 8,
+  },
+  dateIconWrapper: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: "#DBEAFE",
+    justifyContent: "center",
+    alignItems: "center",
   },
   datePickerBtnText: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#0F172A",
+    fontWeight: "700",
+    color: "#1E40AF",
   },
 
   // Products Section
   productsSectionHeader: {
-    marginTop: 6,
-    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
   },
   productsSectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#1E293B",
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
   },
   productCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F8FAFC",
     borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    marginBottom: 14,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    padding: 14,
+    marginBottom: 12,
   },
-  productCardHeader: {
+  productCardTopBar: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    borderBottomColor: "#EDF2F7",
   },
-  productIndexBadge: {
-    backgroundColor: "#EFF6FF",
+  productCardBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  productNumberBadge: {
+    backgroundColor: "#4F46E5",
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginRight: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
-  productIndexText: {
-    fontSize: 12,
+  productNumberBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
     fontWeight: "800",
-    color: "#2563EB",
   },
   productCardTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#0F172A",
-    flex: 1,
+    color: "#1E1B4B",
   },
-  deleteProductBtn: {
-    padding: 4,
+  itemFieldGroup: {
+    marginBottom: 0,
   },
-  lineItemCalcBox: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 8,
+
+  // Calculations Strip inside Product Card
+  calcStrip: {
+    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
     padding: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 2,
-    borderWidth: 1,
-    borderColor: "#EEF2F6",
+    marginTop: 12,
   },
-  lineItemCalcLabel: {
+  calcStripItem: {
+    flex: 1,
+  },
+  calcStripLabel: {
     fontSize: 10,
     color: "#64748B",
-    fontWeight: "500",
+    fontWeight: "600",
+    marginBottom: 2,
   },
-  lineItemCalcValue: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#334155",
-    marginTop: 1,
-  },
-  lineItemCalcLabelTotal: {
-    fontSize: 10,
-    color: "#2563EB",
-    fontWeight: "700",
-  },
-  lineItemCalcValueTotal: {
+  calcStripValue: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#2563EB",
-    marginTop: 1,
+    color: "#0F172A",
   },
-  addProductButton: {
-    flexDirection: "row",
+  calcItemTotalBox: {
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+  },
+  calcItemTotalLabel: {
+    fontSize: 10,
+    color: "#1D4ED8",
+    fontWeight: "700",
+  },
+  calcItemTotalValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1D4ED8",
+  },
+
+  // Dashed Add Product Button
+  addProductDashedBtn: {
     borderWidth: 1.5,
     borderColor: "#2563EB",
     borderStyle: "dashed",
     borderRadius: 10,
-    paddingVertical: 12,
+    backgroundColor: "#FFFFFF",
+    height: 44,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     gap: 6,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  addProductButtonText: {
-    fontSize: 14,
+  addProductDashedBtnText: {
+    fontSize: 13,
     fontWeight: "700",
     color: "#2563EB",
   },
 
-  // Tax Inclusive Checkbox Box (Matches reference image)
-  taxInclusiveBox: {
+  // Tax Inclusive Row
+  taxInclusiveRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 16,
-    gap: 10,
-  },
-  checkboxBox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: "#64748B",
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  checkboxBoxChecked: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
+    gap: 8,
+    paddingVertical: 4,
   },
   taxInclusiveText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#2563EB",
+    color: "#334155",
   },
 
   // Notes
-  notesInput: {
-    backgroundColor: "#FFFFFF",
+  notesTextInput: {
     borderWidth: 1,
     borderColor: "#E2E8F0",
     borderRadius: 10,
     padding: 12,
-    height: 85,
-    textAlignVertical: "top",
     fontSize: 13,
     color: "#0F172A",
+    minHeight: 60,
+    textAlignVertical: "top",
+    backgroundColor: "#FFFFFF",
   },
 
-  // Total Estimate Card (Matches reference image)
-  estimateAdjustmentContainer: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  estimateAdjustmentLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#475569",
-    marginBottom: 4,
-  },
-  estimateAdjustmentInput: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 40,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#0F172A",
-  },
-  adjustmentCalcRow: {
-    backgroundColor: "#EFF6FF",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-  },
-  adjustmentCalcText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#1E40AF",
-  },
-  totalEstimateCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    padding: 16,
-    marginBottom: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  totalEstimateHeaderRow: {
+  // Card 4: Total Estimate
+  estimateTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  totalEstimateLabel: {
-    fontSize: 13,
-    color: "#475569",
+  estimateLeftGroup: {
+    flex: 1,
+    marginRight: 10,
+  },
+  estimateTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  estimateSubtext: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 2,
     fontWeight: "500",
   },
-  totalEstimateAmount: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  totalEstimateBreakdownRow: {
-    marginBottom: 6,
-  },
-  totalEstimateBreakdownText: {
-    fontSize: 12,
-    color: "#64748B",
-  },
-  totalEstimateFooterNote: {
-    fontSize: 11,
-    color: "#94A3B8",
-    fontStyle: "italic",
-    marginTop: 2,
-  },
-
-  // Action Buttons
-  saveDraftButton: {
-    backgroundColor: "#2563EB",
+  estimateBadge: {
+    backgroundColor: "#1D4ED8",
     borderRadius: 10,
-    height: 48,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  saveDraftButtonDisabled: {
-    opacity: 0.7,
-  },
-  saveDraftButtonText: {
+  estimateBadgeText: {
     color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
   },
-  cancelButton: {
-    height: 44,
-    justifyContent: "center",
+  adjustmentRow: {
+    marginBottom: 12,
+  },
+  summaryFormulaBanner: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 8,
   },
-  cancelButtonText: {
-    color: "#64748B",
-    fontSize: 14,
+  summaryFormulaText: {
+    color: "#1E40AF",
+    fontSize: 12,
     fontWeight: "700",
+    flex: 1,
+  },
+  estimateFootnote: {
+    fontSize: 11,
+    color: "#64748B",
+    fontStyle: "italic",
+    marginTop: 8,
   },
 
-  // Picker Modal Styles
-  pickerModalOverlay: {
+  // Submit & Cancel Buttons
+  primarySubmitBtn: {
+    backgroundColor: "#1D4ED8",
+    borderRadius: 14,
+    height: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 8,
+    shadowColor: "#1D4ED8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  primarySubmitBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  cancelBtn: {
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+  },
+
+  // Loading Banner
+  loadingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    padding: 10,
+    borderRadius: 10,
+    gap: 8,
+    marginBottom: 12,
+  },
+  loadingBannerText: {
+    fontSize: 12,
+    color: "#2563EB",
+    fontWeight: "500",
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.55)",
+  },
+
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(10, 37, 64, 0.45)",
     justifyContent: "flex-end",
   },
   pickerModalContent: {
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    padding: 18,
     paddingBottom: Platform.OS === "ios" ? 36 : 24,
-    maxHeight: "82%",
+    maxHeight: "80%",
   },
   pickerModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
   pickerModalTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
-  },
-  pickerCloseCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F1F5F9",
-    justifyContent: "center",
-    alignItems: "center",
   },
   pickerSearchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#F1F5F9",
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingHorizontal: 12,
-    height: 40,
+    paddingHorizontal: 10,
+    height: 38,
     marginBottom: 10,
-    gap: 8,
   },
   pickerSearchInput: {
     flex: 1,
+    marginLeft: 6,
     fontSize: 13,
     color: "#0F172A",
-    paddingVertical: 0,
   },
   pickerItemRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 12,
-    paddingHorizontal: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-    borderRadius: 8,
+    borderBottomColor: "#F8FAFC",
   },
-  pickerItemRowSelected: {
+  pickerItemRowActive: {
     backgroundColor: "#EFF6FF",
+    borderRadius: 8,
+    paddingHorizontal: 8,
   },
   pickerItemLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#0F172A",
+    color: "#334155",
   },
-  pickerItemLabelSelected: {
+  pickerItemLabelActive: {
     color: "#2563EB",
     fontWeight: "700",
   },
-  pickerItemSub: {
-    fontSize: 12,
+  pickerItemSubLabel: {
+    fontSize: 11,
     color: "#64748B",
     marginTop: 2,
   },
-  pickerEmptyContainer: {
-    paddingVertical: 30,
-    alignItems: "center",
-  },
-  pickerEmptyText: {
-    fontSize: 13,
-    color: "#94A3B8",
-  },
 
-  // Calendar Modal Styles
-  calendarModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.55)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
+  // Calendar Modal
   calendarModalContent: {
-    width: "100%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: Platform.OS === "ios" ? 36 : 24,
   },
   calendarModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   calendarModalTitle: {
     fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
   },
-  monthNavRow: {
+  calendarMonthRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  monthNavBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F1F5F9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  monthNavTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-  presetsRow: {
-    flexDirection: "row",
-    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
     marginBottom: 12,
   },
-  presetChip: {
-    backgroundColor: "#EFF6FF",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  presetChipText: {
-    fontSize: 11,
+  calendarMonthText: {
+    fontSize: 14,
     fontWeight: "700",
-    color: "#2563EB",
+    color: "#0F172A",
   },
-  dayOfWeekRow: {
+  calendarWeekdaysRow: {
     flexDirection: "row",
     justifyContent: "space-around",
     marginBottom: 8,
   },
-  dayOfWeekText: {
-    width: 36,
-    textAlign: "center",
+  calendarWeekdayText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#94A3B8",
+    color: "#64748B",
+    width: 38,
+    textAlign: "center",
   },
-  daysGrid: {
+  calendarDaysGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "flex-start",
+    justifyContent: "space-around",
   },
-  dayCellEmpty: {
-    width: "14.28%",
-    height: 36,
-  },
-  dayCell: {
-    width: "14.28%",
-    height: 36,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 18,
-    marginVertical: 2,
-  },
-  dayCellSelected: {
-    backgroundColor: "#2563EB",
-  },
-  dayCellText: {
-    fontSize: 13,
-    color: "#1E293B",
-    fontWeight: "600",
-  },
-  dayCellTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "800",
-  },
-  labelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  fromLeadBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#CCFBF1",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  fromLeadBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#0F766E",
-  },
-  leadInfoBanner: {
-    backgroundColor: "#F0FDFA",
-    borderWidth: 1,
-    borderColor: "#99F6E4",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-  },
-  leadInfoBannerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  leadInfoBannerIcon: {
+  calendarDayCell: {
     width: 38,
     height: 38,
-    borderRadius: 10,
-    backgroundColor: "#CCFBF1",
     justifyContent: "center",
     alignItems: "center",
+    borderRadius: 19,
+    marginVertical: 2,
   },
-  leadInfoBannerTexts: {
-    flex: 1,
+  calendarDayCellSelected: {
+    backgroundColor: "#2563EB",
   },
-  leadInfoBannerHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 2,
+  calendarDayText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#334155",
   },
-  leadInfoBannerTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#0F766E",
-  },
-  leadNumberBadge: {
-    backgroundColor: "#0D9488",
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  leadNumberBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
+  calendarDayTextSelected: {
     color: "#FFFFFF",
-  },
-  leadInfoBannerSub: {
-    fontSize: 12,
-    color: "#475569",
-    marginTop: 2,
-  },
-  leadInfoBannerBold: {
-    fontWeight: "700",
-    color: "#0F172A",
+    fontWeight: "800",
   },
 });

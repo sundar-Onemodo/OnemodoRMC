@@ -7,7 +7,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function OrderProgressScreen() {
   const handleBack = useCallback(() => {
-    router.replace("/quotation" as any);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/quotation" as any);
+    }
   }, []);
 
   useFocusEffect(

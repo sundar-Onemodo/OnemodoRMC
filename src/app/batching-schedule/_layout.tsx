@@ -6,6 +6,7 @@ export default function BatchingScheduleLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="createBatchSchedule" />
+      <Stack.Screen name="editBatchScreen" />
     </Stack>
   );
 }

@@ -3,11 +3,13 @@ import { RootState } from "@/store/store";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import axios from "axios";
-import { router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -558,28 +560,81 @@ export default function CreateLeadScreen() {
     }
   };
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/lead" as any);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      StatusBar.setBarStyle("light-content");
+      if (Platform.OS === "android") {
+        StatusBar.setBackgroundColor("#063b89");
+      }
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => sub.remove();
+    }, [handleBack]),
+  );
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
-      <StatusBar barStyle="light-content" backgroundColor="#063b89" />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#063b89"
+        translucent={false}
+      />
 
-      {/* HEADER */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
+      {/* HEADER (LinearGradient matching quotation reference UI) */}
+      <LinearGradient
+        colors={["#063b89", "#0b4da2"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
+        <View style={styles.headerTopRow}>
           <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => router.back()}
+            style={styles.backButtonCircle}
+            onPress={handleBack}
             activeOpacity={0.7}
           >
-            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+            <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
           </TouchableOpacity>
-          <View style={styles.headerTitleGroup}>
+
+          <View style={styles.headerTitleWrapper}>
             <Text style={styles.headerTitle}>Create Lead</Text>
             <Text style={styles.headerSubtitle}>
               New Customer Inquiry · Sales Pipeline
             </Text>
           </View>
+
+          {/* Isometric 3D Lead Profile Card Illustration */}
+          <View style={styles.headerDocArtWrap}>
+            <View style={styles.isometricSheetShadow} />
+            <View style={styles.isometricSheetBack} />
+            <View style={styles.isometricSheet}>
+              <View style={styles.sheetTopRow}>
+                <View style={styles.sheetAvatarCircle}>
+                  <Ionicons name="person" size={11} color="#2563EB" />
+                </View>
+                <View style={styles.sheetTopLine} />
+              </View>
+              <View style={styles.sheetLineThick} />
+              <View style={styles.sheetLineThin} />
+              <View style={styles.sheetLineShort} />
+            </View>
+            <View style={styles.isometricBadge}>
+              <Ionicons name="star" size={10} color="#FFFFFF" />
+            </View>
+          </View>
         </View>
-      </View>
+      </LinearGradient>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -593,9 +648,12 @@ export default function CreateLeadScreen() {
             styles.scrollContent,
             {
               paddingBottom:
-                keyboardPadding > 0
-                  ? keyboardPadding + 16
-                  : 40,
+                styles.scrollContent.paddingBottom +
+                (Platform.OS === "android"
+                  ? 24
+                  : keyboardPadding > 0
+                    ? 40
+                    : 0),
             },
           ]}
           showsVerticalScrollIndicator={false}
@@ -611,10 +669,16 @@ export default function CreateLeadScreen() {
               section1YRef.current = e.nativeEvent.layout.y;
             }}
           >
-            <View style={styles.cardSectionHeader}>
-              <Ionicons name="business" size={16} color="#2563EB" />
-              <Text style={styles.cardSectionTitle}>
-                Project & Contact Info
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardHeaderIndicator} />
+              <Ionicons
+                name="business-outline"
+                size={18}
+                color="#4F46E5"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.cardHeaderTitle}>
+                Project & Contact Information
               </Text>
             </View>
 
@@ -751,9 +815,15 @@ export default function CreateLeadScreen() {
               SECTION 2: CLASSIFICATION (3 DROPDOWNS IN ONE ROW)
           ========================================== */}
           <View style={styles.card}>
-            <View style={styles.cardSectionHeader}>
-              <Ionicons name="options" size={16} color="#2563EB" />
-              <Text style={styles.cardSectionTitle}>Lead Classification</Text>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardHeaderIndicator} />
+              <Ionicons
+                name="options-outline"
+                size={18}
+                color="#4F46E5"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.cardHeaderTitle}>Lead Classification</Text>
             </View>
 
             <View style={styles.threeColRow}>
@@ -865,13 +935,15 @@ export default function CreateLeadScreen() {
               section3YRef.current = e.nativeEvent.layout.y;
             }}
           >
-            <View style={styles.cardSectionHeader}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardHeaderIndicator} />
               <MaterialCommunityIcons
                 name="cube-outline"
-                size={16}
-                color="#2563EB"
+                size={18}
+                color="#4F46E5"
+                style={{ marginRight: 6 }}
               />
-              <Text style={styles.cardSectionTitle}>Concrete Requirement</Text>
+              <Text style={styles.cardHeaderTitle}>Concrete Requirement</Text>
             </View>
 
             {/* Mix Design Dropdown from API */}
@@ -1023,9 +1095,15 @@ export default function CreateLeadScreen() {
               section5YRef.current = e.nativeEvent.layout.y;
             }}
           >
-            <View style={styles.cardSectionHeader}>
-              <Ionicons name="location" size={16} color="#DC2626" />
-              <Text style={styles.cardSectionTitle}>Location & Notes</Text>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardHeaderIndicator} />
+              <Ionicons
+                name="location-outline"
+                size={18}
+                color="#4F46E5"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.cardHeaderTitle}>Delivery Site & Notes</Text>
             </View>
 
             {/* Delivery Location */}
@@ -1091,33 +1169,34 @@ export default function CreateLeadScreen() {
             </View>
           </View>
 
-          {/* ACTION BUTTONS (IN-SCROLL AT BOTTOM OF FORM - NO FIXED FOOTER) */}
-          <View style={styles.inScrollActionsRow}>
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              onPress={() => router.back()}
-              disabled={isSubmitting}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
+          {/* ACTION BUTTONS (Matching Reference UI) */}
+          <TouchableOpacity
+            style={[
+              styles.primarySubmitBtn,
+              isSubmitting && styles.primarySubmitBtnDisabled,
+            ]}
+            onPress={handleSubmitLead}
+            disabled={isSubmitting}
+            activeOpacity={0.85}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="paper-plane" size={18} color="#FFFFFF" />
+                <Text style={styles.primarySubmitBtnText}>Create Lead</Text>
+              </>
+            )}
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={handleSubmitLead}
-              disabled={isSubmitting}
-              activeOpacity={0.85}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
-                  <Text style={styles.saveBtnText}>Create Lead</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.cancelLinkBtn}
+            onPress={handleBack}
+            disabled={isSubmitting}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.cancelLinkBtnText}>Cancel</Text>
+          </TouchableOpacity>
 
         </ScrollView>
       </KeyboardAvoidingView>
@@ -1613,10 +1692,10 @@ export default function CreateLeadScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#0B2A4A",
+    backgroundColor: "#063b89",
   },
   header: {
-    backgroundColor: "#0B2A4A",
+    backgroundColor: "#063b89",
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 14,
@@ -1716,16 +1795,199 @@ const styles = StyleSheet.create({
   // CARD CONTAINERS
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#F1F5F9",
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 5,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
     gap: 12,
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  cardHeaderIndicator: {
+    width: 4,
+    height: 16,
+    borderRadius: 2,
+    backgroundColor: "#4F46E5",
+    marginRight: 8,
+  },
+  cardHeaderTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  headerGradient: {
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === "android" ? 14 : 10,
+    paddingBottom: 22,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  backButtonCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitleWrapper: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#93C5FD",
+    marginTop: 2,
+  },
+  headerDocArtWrap: {
+    width: 48,
+    height: 48,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  isometricSheetShadow: {
+    position: "absolute",
+    width: 38,
+    height: 42,
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    borderRadius: 7,
+    bottom: 2,
+    right: 4,
+    transform: [{ rotate: "8deg" }, { skewY: "-4deg" }],
+  },
+  isometricSheetBack: {
+    position: "absolute",
+    width: 36,
+    height: 42,
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
+    borderRadius: 7,
+    top: 2,
+    right: 8,
+    transform: [{ rotate: "10deg" }],
+  },
+  isometricSheet: {
+    width: 38,
+    height: 44,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    padding: 5,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    transform: [{ rotate: "-4deg" }],
+  },
+  sheetTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  sheetAvatarCircle: {
+    width: 15,
+    height: 15,
+    borderRadius: 7.5,
+    backgroundColor: "#DBEAFE",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sheetTopLine: {
+    flex: 1,
+    height: 3,
+    backgroundColor: "#93C5FD",
+    borderRadius: 2,
+    marginLeft: 3,
+  },
+  sheetLineThick: {
+    height: 3,
+    backgroundColor: "#BFDBFE",
+    borderRadius: 2,
+    marginBottom: 3,
+  },
+  sheetLineThin: {
+    height: 2.5,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 2,
+    marginBottom: 3,
+  },
+  sheetLineShort: {
+    height: 2.5,
+    width: "60%",
+    backgroundColor: "#E2E8F0",
+    borderRadius: 2,
+  },
+  isometricBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: 0,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#F59E0B",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 3,
+  },
+  primarySubmitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#1D4ED8",
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 10,
+    gap: 8,
+    shadowColor: "#1D4ED8",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  primarySubmitBtnDisabled: {
+    opacity: 0.6,
+  },
+  primarySubmitBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  cancelLinkBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    marginTop: 2,
+    marginBottom: 20,
+  },
+  cancelLinkBtnText: {
+    color: "#64748B",
+    fontSize: 14,
+    fontWeight: "600",
   },
   cardSectionHeader: {
     flexDirection: "row",

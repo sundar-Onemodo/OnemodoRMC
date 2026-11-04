@@ -331,12 +331,8 @@ export default function BatchingScheduleScreen() {
   }, []);
 
   const handleBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/more" as any);
-    }
-  }, [router]);
+    router.replace("/more" as any);
+  }, []);
 
   // Handle Android hardware back press
   useFocusEffect(

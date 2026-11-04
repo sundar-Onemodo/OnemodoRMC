@@ -6,16 +6,15 @@ import {
   setCustomers,
   setMixDesigns,
   setSalesExecutives,
-  setSelectedCustomer,
-  setSelectedSalesExecutive,
-  setSelectedSite,
   setSites,
   setTaxes,
   SiteDropdownItem,
 } from "@/store/quotationSlice";
 import { RootState } from "@/store/store";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import axios from "axios";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -61,8 +60,6 @@ export interface EditQuotationScreenProps {
   onBack?: () => void;
   onSuccess?: () => void;
 }
-
-export type CreateQuotationScreenProps = EditQuotationScreenProps;
 
 const getTodayDateString = () => {
   const d = new Date();
@@ -188,21 +185,9 @@ export default function EditQuotationScreen({
     return null;
   }, [passedQuotation, params.sales_executive_id, params.salesExecutiveId]);
 
-  // console.log("[Router Params] Sales Executive:", {
-  //   "params.sales_executive_id": params.sales_executive_id,
-  //   "params.salesExecutiveId": params.salesExecutiveId,
-  //   "passedQuotation?.sales_executive_id": passedQuotation?.sales_executive_id,
-  //   "passedQuotation?.sales_executive": passedQuotation?.sales_executive,
-  //   resolved_initialSalesExecId: initialSalesExecId,
-  // });
-
   const [storedQuotationId, setStoredQuotationId] = useState<
     number | string | null
   >(quotationId ?? null);
-  const [storedPatronId, setStoredPatronId] = useState<number | null>(() => {
-    const pId = passedQuotation?.patron_id ?? passedQuotation?.patron?.id;
-    return pId ? Number(pId) : null;
-  });
   const [storedSalesExecutiveId, setStoredSalesExecutiveId] = useState<
     number | null
   >(initialSalesExecId);
@@ -211,7 +196,7 @@ export default function EditQuotationScreen({
   );
   const [loadingDetail, setLoadingDetail] = useState<boolean>(!passedQuotation);
 
-  const { token, plant_id, plant_name, user } = useSelector(
+  const { token, plant_id, user } = useSelector(
     (state: RootState) => state.auth,
   );
 
@@ -234,8 +219,13 @@ export default function EditQuotationScreen({
   const cachedSalesExecutives = useSelector(
     (state: RootState) => state.quotation.salesExecutives,
   );
+  console.log("SALES EXE:", cachedSalesExecutives);
 
-  // Form State - initialized from passedQuotation if available
+  const { pumpTypes, salesExecutives: dropdownSalesExecutives } = useSelector(
+    (state: RootState) => state.dropdowns,
+  );
+
+  // Form State
   const [selectedCustomerItem, setSelectedCustomerItem] =
     useState<CustomerDropdownItem | null>(() => {
       if (passedQuotation?.patron) {
@@ -272,125 +262,23 @@ export default function EditQuotationScreen({
         return (
           cachedSalesExecutives.find(
             (se) => Number(se.id) === Number(targetId),
-          ) ||
-          cachedSalesExecutives[0] ||
-          null
+          ) || null
         );
-      }
-      if (
-        passedQuotation?.sales_executive &&
-        typeof passedQuotation.sales_executive === "object" &&
-        passedQuotation.sales_executive.label
-      ) {
-        return {
-          id: Number(passedQuotation.sales_executive.id),
-          label: passedQuotation.sales_executive.label,
-          employee_code: passedQuotation.sales_executive.employee_code,
-          plant_id: passedQuotation.sales_executive.plant_id,
-        };
-      }
-      if (cachedSalesExecutives.length > 0) {
-        return cachedSalesExecutives[0];
       }
       return null;
     });
 
-  // Dedicated immediate fetch for sales executives so it does not wait for heavy dropdowns
+  // Sync selected sales executive when cached sales executives arrive from API
   useEffect(() => {
-    if (!token) return;
-    let isCancelled = false;
-
-    const fetchSalesExecutivesDirectly = async () => {
-      try {
-        const cleanToken = token.trim();
-        const plantIdNum = effectivePlantId || 6;
-        const headers: Record<string, string> = {
-          Accept: "application/json",
-          Authorization: cleanToken.startsWith("Bearer")
-            ? cleanToken
-            : `Bearer ${cleanToken}`,
-          "X-Plant-Id": String(plantIdNum),
-        };
-
-        const res = await axios.get(`${baseURL}/sales-executives`, {
-          headers,
-          params: { plant_id: String(plantIdNum) },
-        });
-
-        const list = Array.isArray(res.data?.data)
-          ? res.data.data
-          : Array.isArray(res.data?.data?.data)
-            ? res.data.data.data
-            : Array.isArray(res.data)
-              ? res.data
-              : [];
-
-        if (!isCancelled && list.length > 0) {
-          dispatch(setSalesExecutives(list));
-
-          const targetId =
-            storedSalesExecutiveId ??
-            initialSalesExecId ??
-            passedQuotation?.sales_executive_id ??
-            passedQuotation?.sales_executive?.id;
-
-          const matched = targetId
-            ? list.find((se: any) => Number(se.id) === Number(targetId))
-            : null;
-
-          const finalItem = matched || list[0];
-          setSelectedSalesExecutiveItem(finalItem);
-          dispatch(setSelectedSalesExecutive(finalItem));
-          if (finalItem?.id) {
-            setStoredSalesExecutiveId(Number(finalItem.id));
-          }
-        }
-      } catch (err: any) {
-        console.warn(
-          "[EditQuotation] Error fetching sales executives directly:",
-          err?.message || err,
-        );
-      }
-    };
-
-    fetchSalesExecutivesDirectly();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [
-    token,
-    effectivePlantId,
-    storedSalesExecutiveId,
-    initialSalesExecId,
-    passedQuotation?.sales_executive_id,
-    passedQuotation?.sales_executive?.id,
-  ]);
-
-  // Synchronize Sales Executive name whenever cachedSalesExecutives or storedSalesExecutiveId updates
-  useEffect(() => {
-    const targetId =
-      storedSalesExecutiveId ??
-      initialSalesExecId ??
-      passedQuotation?.sales_executive_id ??
-      passedQuotation?.sales_executive?.id;
-    if (cachedSalesExecutives.length > 0) {
-      const matched = targetId
-        ? cachedSalesExecutives.find((se) => Number(se.id) === Number(targetId))
-        : null;
-      const finalItem = matched || cachedSalesExecutives[0];
-      if (finalItem) {
-        setSelectedSalesExecutiveItem((prev) => prev || finalItem);
-        dispatch(setSelectedSalesExecutive(finalItem));
+    if (storedSalesExecutiveId && cachedSalesExecutives.length > 0) {
+      const match = cachedSalesExecutives.find(
+        (se) => Number(se.id) === Number(storedSalesExecutiveId),
+      );
+      if (match) {
+        setSelectedSalesExecutiveItem(match);
       }
     }
-  }, [
-    storedSalesExecutiveId,
-    initialSalesExecId,
-    passedQuotation?.sales_executive_id,
-    passedQuotation?.sales_executive?.id,
-    cachedSalesExecutives,
-  ]);
+  }, [storedSalesExecutiveId, cachedSalesExecutives]);
 
   const [quoteDate, setQuoteDate] = useState<string>(getTodayDateString());
   const [validityDate, setValidityDate] = useState<string>(
@@ -400,19 +288,6 @@ export default function EditQuotationScreen({
   const [notes, setNotes] = useState<string>(
     "Delivery subject to schedule confirmation",
   );
-
-  const { pumpTypes } = useSelector((state: RootState) => state.dropdowns);
-  const [concretePump, setConcretePump] = useState<string | null>(() => {
-    return (
-      (passedQuotation as any)?.concrete_pump ||
-      (passedQuotation as any)?.pump_type ||
-      null
-    );
-  });
-  const [pumpRate, setPumpRate] = useState<string>(() => {
-    const pr = (passedQuotation as any)?.pump_rate;
-    return pr !== undefined && pr !== null ? String(pr) : "0";
-  });
   const [adjustment, setAdjustment] = useState<string>(() => {
     const adj = (passedQuotation as any)?.adjustment;
     return adj !== undefined && adj !== null
@@ -514,6 +389,8 @@ export default function EditQuotationScreen({
   const handleBack = useCallback(() => {
     if (onBack) {
       onBack();
+    } else if (router.canGoBack()) {
+      router.back();
     } else {
       router.replace("/quotation" as any);
     }
@@ -548,54 +425,41 @@ export default function EditQuotationScreen({
     ) {
       const taxInc = Boolean(passedQuotation.is_tax_inclusive);
       return passedQuotation.items.map((it: any, idx: number) => {
-        const mix = it.mix_design || {};
-        const tax = it.tax || {};
-        const qty = parseFloat(it.quantity) || 0;
-        const rate = parseFloat(it.rate) || 0;
-        const taxRate = Number(
-          tax.rate ??
-            tax.tax_rate ??
-            (it.tax_amount && qty && rate
-              ? Math.round((parseFloat(it.tax_amount) / (qty * rate)) * 100)
-              : 18),
-        );
         const itemPump =
-          it.concrete_pump ||
-          it.pump_type ||
-          (passedQuotation as any)?.concrete_pump ||
-          (passedQuotation as any)?.pump_type ||
-          null;
-        const itemPumpRateStr =
           it.pump_rate !== undefined && it.pump_rate !== null
-            ? String(it.pump_rate)
+            ? parseFloat(String(it.pump_rate))
             : (passedQuotation as any)?.pump_rate !== undefined &&
                 (passedQuotation as any)?.pump_rate !== null
-              ? String((passedQuotation as any).pump_rate)
-              : "0";
-        const itemPumpRateNum = parseFloat(itemPumpRateStr) || 0;
+              ? parseFloat(String((passedQuotation as any).pump_rate))
+              : 0;
+        const itemQty = parseFloat(it.quantity || "6") || 6;
+        const itemRate = parseFloat(it.rate || "5000") || 5000;
+        const taxRate = Number(it.tax?.rate ?? it.tax?.tax_rate ?? 18);
 
         return {
           id: `item-${it.id || idx}`,
-          mix_design_id: it.mix_design_id,
-          mix_design_name: mix.design_name || mix.name || "Concrete Mix",
-          quantity: String(qty),
-          rate: String(rate),
-          tax_id:
-            it.tax_id !== null && it.tax_id !== undefined
-              ? Number(it.tax_id)
-              : null,
+          mix_design_id: it.mix_design?.id || it.mix_design_id || null,
+          mix_design_name:
+            it.mix_design?.design_name ||
+            it.mix_design?.name ||
+            "Concrete Product",
+          quantity: String(it.quantity ?? 6),
+          rate: String(it.rate ?? 5000),
+          tax_id: it.tax?.id || it.tax_id || null,
           tax_name:
-            tax.tax_name ||
-            tax.name ||
-            (taxRate > 0 ? `GST ${taxRate}%` : "No Tax (0%)"),
+            it.tax?.tax_name || it.tax?.name || `GST ${taxRate}% (Sales)`,
           tax_rate: taxRate,
-          concrete_pump: itemPump,
-          pump_rate: itemPumpRateStr,
+          concrete_pump:
+            it.concrete_pump ||
+            (passedQuotation as any)?.concrete_pump ||
+            (passedQuotation as any)?.pump_type ||
+            null,
+          pump_rate: String(itemPump || 0),
           calculation: calculateLineItemTotals({
-            quantity: qty,
-            rate: rate,
-            pump_rate: itemPumpRateNum,
-            taxRate: taxRate,
+            quantity: itemQty,
+            rate: itemRate,
+            pump_rate: itemPump,
+            taxRate,
             isTaxInclusive: taxInc,
           }),
         };
@@ -628,6 +492,7 @@ export default function EditQuotationScreen({
   const [loadingDropdowns, setLoadingDropdowns] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  // Searchable Picker Modals State
   const [pickerModalVisible, setPickerModalVisible] = useState<boolean>(false);
   const [pickerConfig, setPickerConfig] = useState<{
     title: string;
@@ -642,6 +507,7 @@ export default function EditQuotationScreen({
   });
   const [pickerSearch, setPickerSearch] = useState<string>("");
 
+  // Calendar Modal State
   const [calendarModalVisible, setCalendarModalVisible] =
     useState<boolean>(false);
   const [calendarTarget, setCalendarTarget] = useState<"quote" | "validity">(
@@ -654,11 +520,150 @@ export default function EditQuotationScreen({
     new Date().getMonth(),
   );
 
+  // Fetch full quotation details from API if not fully populated
+  useEffect(() => {
+    const fetchQuotationDetails = async () => {
+      const targetId = quotationId ?? storedQuotationId;
+      if (!targetId || !token) {
+        setLoadingDetail(false);
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      };
+      const cleanToken = token.trim();
+      headers["Authorization"] = cleanToken.startsWith("Bearer")
+        ? cleanToken
+        : `Bearer ${cleanToken}`;
+      if (effectivePlantId !== null && effectivePlantId !== undefined) {
+        headers["X-Plant-Id"] = String(effectivePlantId);
+      }
+
+      try {
+        let apiData: any = null;
+        try {
+          const res = await axios.get(`${baseURL}/quotations/${targetId}`, {
+            headers,
+          });
+          apiData = res.data?.data || res.data;
+        } catch {
+          // fallback
+        }
+
+        if (apiData) {
+          setStoredQuotationId(apiData.id || targetId);
+          if (apiData.reference) setQuotationReference(apiData.reference);
+          if (apiData.notes) setNotes(apiData.notes);
+          if (apiData.quote_date) setQuoteDate(apiData.quote_date);
+          if (apiData.validity_date) setValidityDate(apiData.validity_date);
+
+          const isTaxInc = Boolean(apiData.is_tax_inclusive);
+          setIsTaxInclusive(isTaxInc);
+
+          const qPumpRate =
+            apiData.pump_rate !== undefined && apiData.pump_rate !== null
+              ? String(apiData.pump_rate)
+              : "0";
+
+          if (apiData.adjustment !== undefined && apiData.adjustment !== null) {
+            setAdjustment(
+              String(Math.abs(parseFloat(apiData.adjustment) || 0)),
+            );
+          }
+
+          if (apiData.patron) {
+            setSelectedCustomerItem({
+              id: apiData.patron.id,
+              legal_name: apiData.patron.legal_name || "Customer",
+            });
+          }
+
+          if (apiData.site) {
+            setSelectedSiteItem({
+              id: apiData.site.id,
+              name: apiData.site.name || "Site",
+              site_address_1: apiData.site.site_address_1 || null,
+            });
+          }
+
+          const apiSalesExecId =
+            apiData.sales_executive?.id ??
+            apiData.sales_executive_id ??
+            (typeof apiData.sales_executive === "number"
+              ? apiData.sales_executive
+              : null);
+          if (apiSalesExecId) {
+            const numId = Number(apiSalesExecId);
+            setStoredSalesExecutiveId(numId);
+            if (cachedSalesExecutives && cachedSalesExecutives.length > 0) {
+              const matched = cachedSalesExecutives.find(
+                (se) => Number(se.id) === numId,
+              );
+              setSelectedSalesExecutiveItem(matched || null);
+            }
+          }
+
+          if (Array.isArray(apiData.items) && apiData.items.length > 0) {
+            const mappedItems: FormLineItem[] = apiData.items.map(
+              (it: any, idx: number) => {
+                const itemPump =
+                  it.pump_rate !== undefined && it.pump_rate !== null
+                    ? parseFloat(String(it.pump_rate))
+                    : parseFloat(qPumpRate) || 0;
+                const itemQty = parseFloat(it.quantity || "6") || 6;
+                const itemRate = parseFloat(it.rate || "5000") || 5000;
+                const taxRate = Number(it.tax?.rate ?? it.tax?.tax_rate ?? 18);
+
+                return {
+                  id: `item-${it.id || idx}`,
+                  mix_design_id: it.mix_design?.id || it.mix_design_id || null,
+                  mix_design_name:
+                    it.mix_design?.design_name ||
+                    it.mix_design?.name ||
+                    "Concrete Product",
+                  quantity: String(it.quantity ?? 6),
+                  rate: String(it.rate ?? 5000),
+                  tax_id: it.tax?.id || it.tax_id || null,
+                  tax_name:
+                    it.tax?.tax_name ||
+                    it.tax?.name ||
+                    `GST ${taxRate}% (Sales)`,
+                  tax_rate: taxRate,
+                  concrete_pump:
+                    it.concrete_pump || apiData.concrete_pump || null,
+                  pump_rate: String(itemPump || 0),
+                  calculation: calculateLineItemTotals({
+                    quantity: itemQty,
+                    rate: itemRate,
+                    pump_rate: itemPump,
+                    taxRate,
+                    isTaxInclusive: isTaxInc,
+                  }),
+                };
+              },
+            );
+            setItems(mappedItems);
+          }
+        }
+      } catch (err: any) {
+        console.warn(
+          "[EditQuotation] Error loading details:",
+          err?.message || err,
+        );
+      } finally {
+        setLoadingDetail(false);
+      }
+    };
+
+    fetchQuotationDetails();
+  }, [quotationId, token, effectivePlantId]);
+
+  // Load all dropdown options
   useEffect(() => {
     let isCancelled = false;
-
-    const loadAllDropdowns = async () => {
-      setLoadingDropdowns(true);
+    const loadDropdowns = async () => {
       const headers: Record<string, string> = {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -674,73 +679,38 @@ export default function EditQuotationScreen({
       }
 
       try {
-        const queryParams: Record<string, any> = { page: 1 };
-        if (effectivePlantId !== null && effectivePlantId !== undefined) {
-          queryParams.plant_id = String(effectivePlantId);
-        }
-
         const customersPromise = axios
-          .get(`${baseURL}/customers`, {
-            headers,
-            params: queryParams,
-          })
+          .get(`${baseURL}/customers`, { headers, params: { page: 1 } })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
-            if (Array.isArray(list) && list.length > 0) {
-              dispatch(setCustomers(list));
-              return list;
-            }
-            return [];
+            if (Array.isArray(list)) dispatch(setCustomers(list));
+            return list;
           })
-          .catch((err) => {
-            console.log("Error loading customers:", err?.message || err);
-            return [];
-          });
+          .catch(() => []);
 
         const sitesPromise = axios
-          .get(`${baseURL}/sites`, {
-            headers,
-            params: queryParams,
-          })
+          .get(`${baseURL}/sites`, { headers, params: { page: 1 } })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
-            if (Array.isArray(list) && list.length > 0) {
-              dispatch(setSites(list));
-              return list;
-            }
-            return [];
+            if (Array.isArray(list)) dispatch(setSites(list));
+            return list;
           })
-          .catch((err) => {
-            console.log("Error loading sites:", err?.message || err);
-            return [];
-          });
+          .catch(() => []);
 
         const mixDesignsPromise = axios
-          .get(`${baseURL}/mix-designs`, {
-            headers,
-            params: queryParams,
-          })
+          .get(`${baseURL}/mix-designs`, { headers, params: { page: 1 } })
           .then((res) => {
             const list = res.data?.data?.data || res.data?.data || [];
-            if (Array.isArray(list) && list.length > 0) {
-              dispatch(setMixDesigns(list));
-              return list;
-            }
-            return [];
+            if (Array.isArray(list)) dispatch(setMixDesigns(list));
+            return list;
           })
-          .catch((err) => {
-            console.log("Error loading mix designs:", err?.message || err);
-            return [];
-          });
+          .catch(() => []);
 
         const taxesPromise = axios
-          .get(`${baseURL}/taxes`, {
-            headers,
-            params: { page: 1 },
-          })
+          .get(`${baseURL}/taxes`, { headers, params: { page: 1 } })
           .then((res) => {
             const rawList = res.data?.data?.data || res.data?.data || [];
-            if (Array.isArray(rawList) && rawList.length > 0) {
+            if (Array.isArray(rawList)) {
               const parentTaxes = rawList.filter(
                 (t: any) => t.parent_id === null || t.parent_id === undefined,
               );
@@ -750,50 +720,84 @@ export default function EditQuotationScreen({
             }
             return [];
           })
-          .catch((err) => {
-            console.log("Error loading taxes:", err?.message || err);
-            return [];
-          });
+          .catch(() => []);
+
+        const salesExecParams: Record<string, any> = {
+          per_page: 20,
+          ...(effectivePlantId ? { plant_id: effectivePlantId } : {}),
+        };
 
         const salesExecutivesPromise = axios
           .get(`${baseURL}/sales-executives`, {
             headers,
-            params: { plant_id: String(effectivePlantId || 6) },
+            params: salesExecParams,
+            timeout: 15000,
+          })
+          .catch(async (firstErr) => {
+            console.log(
+              "[EditQuotation] /sales-executives (with plant_id param) status:",
+              firstErr?.response?.status,
+              firstErr?.response?.data || firstErr?.message,
+            );
+            // Fallback attempt: with headers and per_page: 20 (no plant_id param)
+            try {
+              return await axios.get(`${baseURL}/sales-executives`, {
+                headers,
+                params: { per_page: 20 },
+                timeout: 15000,
+              });
+            } catch (secondErr: any) {
+              console.log(
+                "[EditQuotation] /sales-executives (without plant_id param) status:",
+                secondErr?.response?.status,
+                secondErr?.response?.data || secondErr?.message,
+              );
+              // Final fallback attempt: minimal auth-only headers
+              const authOnlyHeaders: Record<string, string> = {
+                Accept: "application/json",
+                ...(token
+                  ? {
+                      Authorization: token.trim().startsWith("Bearer")
+                        ? token.trim()
+                        : `Bearer ${token.trim()}`,
+                    }
+                  : {}),
+              };
+              return await axios.get(`${baseURL}/sales-executives`, {
+                headers: authOnlyHeaders,
+                params: { per_page: 20 },
+                timeout: 15000,
+              });
+            }
           })
           .then((res) => {
-            const list = Array.isArray(res.data?.data)
-              ? res.data.data
-              : Array.isArray(res.data?.data?.data)
-                ? res.data.data.data
-                : Array.isArray(res.data)
-                  ? res.data
-                  : [];
-            if (Array.isArray(list) && list.length > 0) {
-              dispatch(setSalesExecutives(list));
-              const targetSalesExecId =
-                storedSalesExecutiveId ??
-                initialSalesExecId ??
-                passedQuotation?.sales_executive_id ??
-                passedQuotation?.sales_executive?.id;
-              const matched = targetSalesExecId
-                ? list.find(
-                    (se: any) => Number(se.id) === Number(targetSalesExecId),
-                  )
-                : null;
-              const finalItem = matched || list[0];
-              setSelectedSalesExecutiveItem((prev) => prev || finalItem);
-              dispatch(setSelectedSalesExecutive(finalItem));
-              if (finalItem?.id) {
-                setStoredSalesExecutiveId(
-                  (prev) => prev ?? Number(finalItem.id),
-                );
-              }
-              return list;
-            }
-            return [];
+            const rawList =
+              res?.data?.data?.data || res?.data?.data || res?.data || [];
+            const list = Array.isArray(rawList)
+              ? rawList.filter(
+                  (se: any) =>
+                    !String(se?.label || se?.name || "")
+                      .toLowerCase()
+                      .includes("testing account") &&
+                    !String(se?.label || se?.name || "")
+                      .toLowerCase()
+                      .includes("testing"),
+                )
+              : [];
+            console.log(
+              "[EditQuotation] Fetched /sales-executives successfully, count:",
+              list.length,
+              list,
+            );
+            dispatch(setSalesExecutives(list));
+            return list;
           })
           .catch((err) => {
-            console.log("Error loading sales executives:", err?.message || err);
+            console.warn(
+              "[EditQuotation] Failed to fetch sales executives:",
+              err?.message || err,
+              err?.response?.data,
+            );
             return [];
           });
 
@@ -811,501 +815,33 @@ export default function EditQuotationScreen({
           salesExecutivesPromise,
         ]);
 
-        if (!isCancelled) {
-          // Match Sales Executive based on sales_executive_id (e.g. 1) or fallback to first executive
-          if (fetchedSalesExecs.length > 0) {
-            const targetSalesExecId =
-              storedSalesExecutiveId ??
-              initialSalesExecId ??
-              passedQuotation?.sales_executive_id ??
-              passedQuotation?.sales_executive?.id;
-            const matched = targetSalesExecId
-              ? fetchedSalesExecs.find(
-                  (se: any) => Number(se.id) === Number(targetSalesExecId),
-                )
-              : null;
-            const finalItem = matched || fetchedSalesExecs[0];
-            setSelectedSalesExecutiveItem((prev) => prev || finalItem);
-            dispatch(setSelectedSalesExecutive(finalItem));
-            if (finalItem?.id) {
-              setStoredSalesExecutiveId((prev) => prev ?? Number(finalItem.id));
-            }
-          }
-
-          // Match Customer based on patron_id
-          if (fetchedCustomers.length > 0) {
-            const targetPatronId =
-              passedQuotation?.patron_id ??
-              passedQuotation?.patron?.id ??
-              storedPatronId;
-            if (targetPatronId) {
-              const matchedCust = fetchedCustomers.find(
-                (c: any) => Number(c.id) === Number(targetPatronId),
-              );
-              if (matchedCust) {
-                setSelectedCustomerItem(matchedCust);
-                dispatch(setSelectedCustomer(matchedCust));
-              }
-            } else {
-              const defaultCust = fetchedCustomers[0];
-              setSelectedCustomerItem((prev) => {
-                if (prev) return prev;
-                dispatch(setSelectedCustomer(defaultCust));
-                return defaultCust;
-              });
-            }
-          }
-
-          // Match Site based on site_id
-          if (fetchedSites.length > 0) {
-            const targetSiteId =
-              passedQuotation?.site_id ?? passedQuotation?.site?.id;
-            if (targetSiteId) {
-              const matchedSite = fetchedSites.find(
-                (s: any) => Number(s.id) === Number(targetSiteId),
-              );
-              if (matchedSite) {
-                setSelectedSiteItem(matchedSite);
-                dispatch(setSelectedSite(matchedSite));
-              }
-            } else if (fetchedCustomers.length > 0) {
-              const defaultCust = fetchedCustomers[0];
-              const matchingSite = fetchedSites.find((s: any) =>
-                Array.isArray(s.patron_id)
-                  ? s.patron_id.includes(defaultCust.id)
-                  : s.patron_id === defaultCust.id,
-              );
-              const defaultSite = matchingSite || fetchedSites[0] || null;
-              if (defaultSite) {
-                setSelectedSiteItem((prev) => {
-                  if (prev) return prev;
-                  dispatch(setSelectedSite(defaultSite));
-                  return defaultSite;
-                });
-              }
-            }
-          }
-
-          if (fetchedMixes.length > 0 && fetchedTaxes.length > 0) {
-            setItems((prevItems) => {
-              if (
-                prevItems.length > 0 &&
-                prevItems.some((it) => it.mix_design_id)
-              ) {
-                return prevItems;
-              }
-              if (passedQuotation?.items && passedQuotation.items.length > 0) {
-                return prevItems;
-              }
-              const firstMix = fetchedMixes[0];
-              const defaultTax =
-                fetchedTaxes.find(
-                  (t: any) =>
-                    String(t.tax_name).includes("18%") ||
-                    Number(t.rate || t.tax_rate) === 18,
-                ) || fetchedTaxes[0];
-
-              const initialRate =
-                parseFloat(firstMix.rate_per_qty || "0") > 0
-                  ? String(parseFloat(firstMix.rate_per_qty))
-                  : "5000";
-
-              return [
-                {
-                  id: "item-1",
-                  mix_design_id: firstMix.id,
-                  mix_design_name: firstMix.design_name || firstMix.name || "",
-                  quantity: "6",
-                  rate: initialRate,
-                  tax_id: defaultTax.id,
-                  tax_name: defaultTax.tax_name || defaultTax.name || "GST 18%",
-                  tax_rate: Number(
-                    defaultTax.rate || defaultTax.tax_rate || 18,
-                  ),
-                  concrete_pump: null,
-                  pump_rate: "0",
-                  calculation: calculateLineItemTotals({
-                    quantity: 6,
-                    rate: parseFloat(initialRate) || 5000,
-                    pump_rate: 0,
-                    taxRate: Number(
-                      defaultTax.rate || defaultTax.tax_rate || 18,
-                    ),
-                    isTaxInclusive: false,
-                  }),
-                },
-              ];
-            });
-          }
-        }
-      } finally {
-        if (!isCancelled) {
-          setLoadingDropdowns(false);
-        }
-      }
-    };
-
-    loadAllDropdowns();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [token, plant_id, effectivePlantId, dispatch]);
-
-  useEffect(() => {
-    if (!token || !quotationId) {
-      return;
-    }
-
-    let isCancelled = false;
-
-    const fetchQuotation = async () => {
-      try {
-        const headers: Record<string, string> = {
-          Accept: "application/json",
-        };
-        const cleanToken = token.trim();
-        headers["Authorization"] = cleanToken.startsWith("Bearer")
-          ? cleanToken
-          : `Bearer ${cleanToken}`;
-        if (effectivePlantId !== null && effectivePlantId !== undefined) {
-          headers["X-Plant-Id"] = String(effectivePlantId);
-        }
-
-        console.log(
-          `[QuotationsViewAPI] Fetching quotation details for ID: ${quotationId}`,
-        );
-
-        const viewParams: Record<string, any> = {
-          quotation: String(quotationId),
-        };
-        if (effectivePlantId !== null && effectivePlantId !== undefined) {
-          viewParams.plant_id = String(effectivePlantId);
-        }
-
-        let res;
-        try {
-          res = await axios.get(`${baseURL}/quotations/${quotationId}`, {
-            headers,
-            params: viewParams,
-          });
-        } catch (pathErr: any) {
-          if (
-            pathErr?.response?.status === 404 ||
-            pathErr?.response?.status === 405
-          ) {
-            console.log(
-              "[QuotationsViewAPI] Fallback to ?quotation= parameter",
-            );
-            res = await axios.get(`${baseURL}/quotations`, {
-              params: { ...viewParams, quotation: String(quotationId) },
-              headers,
-            });
-          } else {
-            throw pathErr;
-          }
-        }
-
-        if (isCancelled) return;
-
-        console.log("[QuotationsViewAPI] Raw response:", res?.data);
-        const rawApiData = res?.data?.data || res?.data;
-        let quoteData = rawApiData;
-        if (rawApiData && Array.isArray(rawApiData.data)) {
-          quoteData =
-            rawApiData.data.find(
-              (q: any) => String(q.id) === String(quotationId),
-            ) || rawApiData.data[0];
-        } else if (Array.isArray(rawApiData)) {
-          quoteData =
-            rawApiData.find((q: any) => String(q.id) === String(quotationId)) ||
-            rawApiData[0];
-        }
-
-        if (quoteData) {
-          console.log(
-            "[QuotationsViewAPI] Successfully loaded quotation data:",
-            quoteData,
-          );
-          if (quoteData.id) {
-            setStoredQuotationId(quoteData.id);
-          }
-          const loadedPatronId = quoteData.patron_id ?? quoteData.patron?.id;
-          if (loadedPatronId) {
-            setStoredPatronId(Number(loadedPatronId));
-          }
-          if (quoteData.reference) {
-            setQuotationReference(quoteData.reference);
-          }
-
-          // 1. Customer
-          if (quoteData.patron) {
-            const custItem: CustomerDropdownItem = {
-              id: quoteData.patron.id,
-              legal_name: quoteData.patron.legal_name || "Customer",
-            };
-            setSelectedCustomerItem(custItem);
-            dispatch(setSelectedCustomer(custItem));
-          } else if (quoteData.patron_id) {
-            const found = cachedCustomers.find(
-              (c: any) => Number(c.id) === Number(quoteData.patron_id),
-            );
-            const custItem: CustomerDropdownItem = found || {
-              id: quoteData.patron_id,
-              legal_name: "Customer",
-            };
-            setSelectedCustomerItem(custItem);
-            dispatch(setSelectedCustomer(custItem));
-          }
-
-          // 2. Site
-          if (quoteData.site) {
-            const siteItem: SiteDropdownItem = {
-              id: quoteData.site.id,
-              name: quoteData.site.name || "Site",
-              site_address_1: quoteData.site.site_address_1 || null,
-            };
-            setSelectedSiteItem(siteItem);
-            dispatch(setSelectedSite(siteItem));
-          } else if (quoteData.site_id) {
-            const found = cachedSites.find(
-              (s: any) => Number(s.id) === Number(quoteData.site_id),
-            );
-            const siteItem: SiteDropdownItem = found || {
-              id: quoteData.site_id,
-              name: "Site",
-            };
-            setSelectedSiteItem(siteItem);
-            dispatch(setSelectedSite(siteItem));
-          }
-
-          // Sales Executive
-          const loadedSalesExecutiveId =
-            quoteData.sales_executive_id ??
-            quoteData.sales_executive?.id ??
-            (typeof quoteData.sales_executive === "number"
-              ? quoteData.sales_executive
-              : null) ??
-            passedQuotation?.sales_executive_id ??
-            initialSalesExecId;
-
-          if (loadedSalesExecutiveId) {
-            setStoredSalesExecutiveId(Number(loadedSalesExecutiveId));
-          }
-
-          if (
-            quoteData.sales_executive &&
-            typeof quoteData.sales_executive === "object" &&
-            quoteData.sales_executive.label
-          ) {
-            const seItem: SalesExecutiveDropdownItem = {
-              id: Number(quoteData.sales_executive.id),
-              label:
-                quoteData.sales_executive.label ||
-                quoteData.sales_executive.name ||
-                "Sales Executive",
-              employee_code: quoteData.sales_executive.employee_code,
-              plant_id: quoteData.sales_executive.plant_id,
-            };
-            setSelectedSalesExecutiveItem(seItem);
-            dispatch(setSelectedSalesExecutive(seItem));
-          } else if (loadedSalesExecutiveId) {
-            const targetSeId = Number(loadedSalesExecutiveId);
-            const found = cachedSalesExecutives.find(
-              (se: any) => Number(se.id) === targetSeId,
+        if (
+          !isCancelled &&
+          Array.isArray(fetchedSalesExecs) &&
+          fetchedSalesExecs.length > 0
+        ) {
+          const targetId = storedSalesExecutiveId ?? initialSalesExecId;
+          if (targetId) {
+            const found = fetchedSalesExecs.find(
+              (se: any) => Number(se.id) === Number(targetId),
             );
             if (found) {
               setSelectedSalesExecutiveItem(found);
-              dispatch(setSelectedSalesExecutive(found));
-            } else {
-              try {
-                const seHeaders = {
-                  Accept: "application/json",
-                  Authorization: cleanToken.startsWith("Bearer")
-                    ? cleanToken
-                    : `Bearer ${cleanToken}`,
-                  "X-Plant-Id": String(effectivePlantId || 6),
-                };
-                const seRes = await axios.get(`${baseURL}/sales-executives`, {
-                  headers: seHeaders,
-                  params: { plant_id: String(effectivePlantId || 6) },
-                });
-                const seList = Array.isArray(seRes.data?.data)
-                  ? seRes.data.data
-                  : Array.isArray(seRes.data?.data?.data)
-                    ? seRes.data.data.data
-                    : [];
-                if (seList.length > 0) {
-                  dispatch(setSalesExecutives(seList));
-                  const matchedDirectly = seList.find(
-                    (se: any) => Number(se.id) === targetSeId,
-                  );
-                  const finalSe = matchedDirectly || seList[0];
-                  setSelectedSalesExecutiveItem(finalSe);
-                  dispatch(setSelectedSalesExecutive(finalSe));
-                  if (finalSe?.id) {
-                    setStoredSalesExecutiveId(Number(finalSe.id));
-                  }
-                }
-              } catch (seErr) {
-                const labelCandidate =
-                  quoteData.sales_executive_name ||
-                  (typeof quoteData.sales_executive === "string"
-                    ? quoteData.sales_executive
-                    : "") ||
-                  passedQuotation?.sales_executive_name ||
-                  passedQuotation?.sales_executive?.label;
-                if (labelCandidate) {
-                  setSelectedSalesExecutiveItem({
-                    id: targetSeId,
-                    label: labelCandidate,
-                  });
-                }
-              }
-            }
-          } else {
-            // When quotation has no sales_executive_id, default to plant's primary sales executive
-            if (cachedSalesExecutives.length > 0) {
-              const defaultSe = cachedSalesExecutives[0];
-              setSelectedSalesExecutiveItem((prev) => prev || defaultSe);
-              dispatch(setSelectedSalesExecutive(defaultSe));
-              if (defaultSe?.id) {
-                setStoredSalesExecutiveId(
-                  (prev) => prev ?? Number(defaultSe.id),
-                );
-              }
             }
           }
-
-          // 3. Dates
-          if (quoteData.quote_date) {
-            setQuoteDate(String(quoteData.quote_date).split("T")[0]);
-          }
-          if (quoteData.validity_date) {
-            setValidityDate(String(quoteData.validity_date).split("T")[0]);
-          }
-
-          // 4. Tax Inclusive
-          const taxInc = Boolean(quoteData.is_tax_inclusive);
-          setIsTaxInclusive(taxInc);
-
-          // 5. Notes
-          if (quoteData.notes) {
-            setNotes(quoteData.notes);
-          }
-
-          // 5b. Pump & Adjustment
-          if (quoteData.concrete_pump || quoteData.pump_type || quoteData.items?.[0]?.concrete_pump) {
-            setConcretePump(quoteData.concrete_pump || quoteData.pump_type || quoteData.items?.[0]?.concrete_pump || null);
-          }
-          const quotationPumpNum =
-            quoteData.pump_rate !== undefined && quoteData.pump_rate !== null
-              ? parseFloat(quoteData.pump_rate) || 0
-              : quoteData.items?.[0]?.pump_rate !== undefined && quoteData.items?.[0]?.pump_rate !== null
-                ? parseFloat(quoteData.items[0].pump_rate) || 0
-                : parseFloat(pumpRate) || 0;
-
-          if (quoteData.pump_rate !== undefined && quoteData.pump_rate !== null) {
-            setPumpRate(String(quoteData.pump_rate));
-          } else if (quoteData.items?.[0]?.pump_rate !== undefined && quoteData.items?.[0]?.pump_rate !== null) {
-            setPumpRate(String(quoteData.items[0].pump_rate));
-          }
-          if (quoteData.adjustment !== undefined && quoteData.adjustment !== null) {
-            setAdjustment(
-              String(Math.abs(parseFloat(quoteData.adjustment) || 0)),
-            );
-          }
-
-          // 6. Line Items
-          if (Array.isArray(quoteData.items) && quoteData.items.length > 0) {
-            const mapped: FormLineItem[] = quoteData.items.map(
-              (it: any, idx: number) => {
-                const mix = it.mix_design || {};
-                const tax = it.tax || {};
-                const qty = parseFloat(it.quantity) || 0;
-                const rate = parseFloat(it.rate) || 0;
-                const taxRate = Number(
-                  tax.rate ??
-                    tax.tax_rate ??
-                    (it.tax_amount && qty && rate
-                      ? Math.round(
-                          (parseFloat(it.tax_amount) / (qty * rate)) * 100,
-                        )
-                      : 18),
-                );
-                const itemConcretePump =
-                  it.concrete_pump ||
-                  it.pump_type ||
-                  (idx === 0 ? (quoteData.concrete_pump || quoteData.pump_type || null) : null);
-                const itemPumpRateStr =
-                  it.pump_rate !== undefined && it.pump_rate !== null
-                    ? String(it.pump_rate)
-                    : idx === 0 && quoteData.pump_rate !== undefined && quoteData.pump_rate !== null
-                      ? String(quoteData.pump_rate)
-                      : "0";
-                const itemPumpRate = parseFloat(itemPumpRateStr) || 0;
-
-                return {
-                  id: `item-${it.id || idx}`,
-                  mix_design_id: it.mix_design_id,
-                  mix_design_name:
-                    mix.design_name || mix.name || "Concrete Mix",
-                  quantity: String(qty),
-                  rate: String(rate),
-                  tax_id:
-                    it.tax_id !== null && it.tax_id !== undefined
-                      ? Number(it.tax_id)
-                      : null,
-                  tax_name:
-                    tax.tax_name ||
-                    tax.name ||
-                    (taxRate > 0 ? `GST ${taxRate}%` : "No Tax (0%)"),
-                  tax_rate: taxRate,
-                  concrete_pump: itemConcretePump,
-                  pump_rate: itemPumpRateStr,
-                  calculation: calculateLineItemTotals({
-                    quantity: qty,
-                    rate: rate,
-                    pump_rate: itemPumpRate,
-                    taxRate: taxRate,
-                    isTaxInclusive: taxInc,
-                  }),
-                };
-              },
-            );
-            setItems(mapped);
-          }
-        }
-      } catch (error: any) {
-        if (!isCancelled) {
-          console.log(
-            "[QuotationsViewAPI] Error:",
-            error?.response?.status,
-            error?.response?.data || error?.message,
-          );
         }
       } finally {
-        if (!isCancelled) {
-          setLoadingDetail(false);
-        }
+        if (!isCancelled) setLoadingDropdowns(false);
       }
     };
 
-    fetchQuotation();
-
+    loadDropdowns();
     return () => {
       isCancelled = true;
     };
-  }, [
-    token,
-    plant_id,
-    quotationId,
-    cachedCustomers,
-    cachedSites,
-    cachedSalesExecutives,
-    dispatch,
-  ]);
+  }, [token, effectivePlantId, dispatch]);
 
+  // Tax Inclusive Toggle
   const toggleTaxInclusive = () => {
     const nextVal = !isTaxInclusive;
     setIsTaxInclusive(nextVal);
@@ -1326,6 +862,7 @@ export default function EditQuotationScreen({
     );
   };
 
+  // Item Update
   const handleUpdateItem = (
     index: number,
     field: keyof FormLineItem,
@@ -1392,8 +929,8 @@ export default function EditQuotationScreen({
       rate: initialRate,
       tax_id: defaultTax ? defaultTax.id : null,
       tax_name: defaultTax
-        ? defaultTax.tax_name || defaultTax.name || "GST 18%"
-        : "GST 18%",
+        ? defaultTax.tax_name || defaultTax.name || "GST 18% (Sales)"
+        : "GST 18% (Sales)",
       tax_rate: defaultTax
         ? Number(defaultTax.rate || defaultTax.tax_rate || 18)
         : 18,
@@ -1424,6 +961,7 @@ export default function EditQuotationScreen({
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Calculations
   const totalSummary = useMemo(() => {
     const baseSummary = items.reduce(
       (acc, item) => {
@@ -1447,8 +985,15 @@ export default function EditQuotationScreen({
     };
   }, [items, adjustment]);
 
+  // Picker openers
   const openCustomerPicker = () => {
-    const list = cachedCustomers;
+    const list = [...cachedCustomers];
+    if (
+      selectedCustomerItem &&
+      !list.some((c) => c.id === selectedCustomerItem.id)
+    ) {
+      list.unshift(selectedCustomerItem);
+    }
 
     setPickerConfig({
       title: "Select Customer",
@@ -1460,19 +1005,6 @@ export default function EditQuotationScreen({
       onSelect: (item) => {
         const found = list.find((c) => c.id === item.id) || null;
         setSelectedCustomerItem(found);
-        if (found) {
-          dispatch(setSelectedCustomer(found));
-          // Filter matching sites
-          const relatedSite = cachedSites.find((s) =>
-            Array.isArray(s.patron_id)
-              ? s.patron_id.includes(found.id)
-              : (s.patron_id as any) === found.id,
-          );
-          if (relatedSite) {
-            setSelectedSiteItem(relatedSite);
-            dispatch(setSelectedSite(relatedSite));
-          }
-        }
       },
     });
     setPickerSearch("");
@@ -1480,7 +1012,10 @@ export default function EditQuotationScreen({
   };
 
   const openSitePicker = () => {
-    const list = cachedSites;
+    const list = [...cachedSites];
+    if (selectedSiteItem && !list.some((s) => s.id === selectedSiteItem.id)) {
+      list.unshift(selectedSiteItem);
+    }
 
     setPickerConfig({
       title: "Select Delivery Site",
@@ -1493,7 +1028,6 @@ export default function EditQuotationScreen({
       onSelect: (item) => {
         const found = list.find((s) => s.id === item.id) || null;
         setSelectedSiteItem(found);
-        if (found) dispatch(setSelectedSite(found));
       },
     });
     setPickerSearch("");
@@ -1501,30 +1035,43 @@ export default function EditQuotationScreen({
   };
 
   const openSalesExecutivePicker = () => {
-    const list = [...cachedSalesExecutives];
-    if (
-      selectedSalesExecutiveItem &&
-      selectedSalesExecutiveItem.id &&
-      !list.some((s) => Number(s.id) === Number(selectedSalesExecutiveItem.id))
-    ) {
-      list.unshift(selectedSalesExecutiveItem);
-    }
+    // Strictly show what is returned from the API (/sales-executives)
+    const rawList =
+      cachedSalesExecutives && cachedSalesExecutives.length > 0
+        ? cachedSalesExecutives
+        : (dropdownSalesExecutives || []);
+    const list = rawList.filter(
+      (se: any) =>
+        !String(se?.label || se?.name || "").toLowerCase().includes("testing account") &&
+        !String(se?.label || se?.name || "").toLowerCase().includes("testing"),
+    );
+
+    const pickerItems: {
+      id: number | string | null;
+      label: string;
+      subLabel?: string;
+    }[] = [
+      { id: null, label: "-- None --", subLabel: "Clear / No Sales Executive" },
+      ...list.map((se) => ({
+        id: se.id,
+        label: cleanSalesExecutiveName(se.label),
+        subLabel: se.employee_code ? `Code: ${se.employee_code}` : undefined,
+      })),
+    ];
 
     setPickerConfig({
       title: "Select Sales Executive",
-      items: list.map((s) => ({
-        id: s.id,
-        label: cleanSalesExecutiveName(s.label),
-        subLabel: undefined,
-      })),
+      items: pickerItems,
       selectedId: selectedSalesExecutiveItem?.id ?? null,
       onSelect: (item) => {
-        const found =
-          list.find((s) => Number(s.id) === Number(item.id)) || null;
-        setSelectedSalesExecutiveItem(found);
-        if (found) {
-          setStoredSalesExecutiveId(Number(found.id));
-          dispatch(setSelectedSalesExecutive(found));
+        if (item.id === null) {
+          setSelectedSalesExecutiveItem(null);
+          setStoredSalesExecutiveId(null);
+        } else {
+          const found =
+            list.find((se) => Number(se.id) === Number(item.id)) || null;
+          setSelectedSalesExecutiveItem(found);
+          if (found) setStoredSalesExecutiveId(Number(found.id));
         }
       },
     });
@@ -1554,7 +1101,7 @@ export default function EditQuotationScreen({
     });
 
     setPickerConfig({
-      title: "Select Concrete Pump",
+      title: "Select Pump Type",
       items: list,
       selectedId: items[itemIndex]?.concrete_pump ?? null,
       onSelect: (item) => {
@@ -1573,7 +1120,7 @@ export default function EditQuotationScreen({
     const list = cachedMixDesigns;
 
     setPickerConfig({
-      title: "Select Product / Mix Design",
+      title: "Select Product or Mix Design",
       items: list.map((m) => ({
         id: m.id,
         label: m.design_name || m.name || "Concrete Mix",
@@ -1691,30 +1238,36 @@ export default function EditQuotationScreen({
     setCalendarModalVisible(false);
   };
 
-  // Days in selected calendar month
   const calendarDays = useMemo(() => {
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-    const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay(); // 0 for Sun
+    const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
     return { daysInMonth, firstDayIndex };
   }, [calendarYear, calendarMonth]);
 
+  // Submit Changes
   const handleSubmitQuotation = async () => {
+    const targetId = quotationId ?? storedQuotationId;
+    if (!targetId) {
+      Alert.alert("Error", "Missing Quotation ID.");
+      return;
+    }
+
     if (!selectedCustomerItem?.id) {
       Alert.alert("Validation", "Please select a Customer.");
       return;
     }
+
     if (!selectedSiteItem?.id) {
       Alert.alert("Validation", "Please select a Delivery Site.");
       return;
     }
 
-    // Validate items
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (!item.mix_design_id) {
         Alert.alert(
           "Validation",
-          `Please select a Product / Mix Design for Product #${i + 1}.`,
+          `Please select a Product or Mix Design for Product #${i + 1}.`,
         );
         return;
       }
@@ -1738,33 +1291,21 @@ export default function EditQuotationScreen({
 
     setIsSubmitting(true);
 
-    const activeQuotationId =
-      passedQuotation?.id ?? storedQuotationId ?? quotationId;
-    const activePatronId = selectedCustomerItem?.id ?? storedPatronId;
-
     const payload = {
-      id: Number(activeQuotationId),
-      quotation_id: Number(activeQuotationId),
-      quotation: Number(activeQuotationId),
-      patron_id: Number(activePatronId),
-      site_id: selectedSiteItem ? Number(selectedSiteItem.id) : null,
+      patron_id: Number(selectedCustomerItem.id),
+      site_id: Number(selectedSiteItem.id),
       sales_executive_id: selectedSalesExecutiveItem?.id
         ? Number(selectedSalesExecutiveItem.id)
-        : (storedSalesExecutiveId ??
-          initialSalesExecId ??
-          (passedQuotation?.sales_executive_id
-            ? Number(passedQuotation.sales_executive_id)
-            : null)),
-      quote_date: quoteDate || getTodayDateString(),
+        : null,
+      quote_date: quoteDate,
       validity_date: validityDate,
-      is_tax_inclusive: isTaxInclusive ? 1 : 0,
+      is_tax_inclusive: isTaxInclusive,
       notes: notes.trim(),
-      plant_id: effectivePlantId ? Number(effectivePlantId) : undefined,
       concrete_pump: items[0]?.concrete_pump || null,
       pump_rate: parseFloat(items[0]?.pump_rate || "0") || 0,
       adjustment: parseFloat(adjustment) || 0,
       items: items.map((it) => ({
-        mix_design_id: Number(it.mix_design_id),
+        mix_design_id: it.mix_design_id ? Number(it.mix_design_id) : null,
         quantity: Number(parseFloat(it.quantity).toFixed(2)),
         rate: Number(parseFloat(it.rate).toFixed(2)),
         tax_id:
@@ -1776,12 +1317,7 @@ export default function EditQuotationScreen({
       })),
     };
 
-    console.log(
-      "\n==================== [EDIT QUOTATION PAYLOAD] ====================\n" +
-        JSON.stringify(payload, null, 2) +
-        "\n==================================================================",
-    );
-    console.log("[EditQuotationScreen] Payload Object:", payload);
+    console.log("[EditQuotationScreen] Submitting Payload:", payload);
 
     const headers: Record<string, string> = {
       Accept: "application/json",
@@ -1797,95 +1333,34 @@ export default function EditQuotationScreen({
       headers["X-Plant-Id"] = String(effectivePlantId);
     }
 
-    const params: Record<string, any> = {};
-    if (activeQuotationId !== null && activeQuotationId !== undefined) {
-      params.quotation = String(activeQuotationId);
-    }
-    // if (effectivePlantId !== null && effectivePlantId !== undefined) {
-    //   params.plant_id = String(effectivePlantId);
-    // }
-
     try {
-      console.log(
-        `[Update Quotation] PUT ${baseURL}/quotations/${activeQuotationId} with payload:`,
-        payload,
-      );
-      console.log(
-        "[Update Quotation] Headers:",
-        JSON.stringify(headers, null, 2),
-      );
-      console.log(
-        "[Update Quotation] Params:",
-        JSON.stringify(params, null, 2),
-      );
-
-      let updateRes;
-      try {
-        updateRes = await axios.put(
-          `${baseURL}/quotations/${activeQuotationId}`,
-          payload,
-          {
-            headers,
-            params,
-          },
-        );
-      } catch (putErr: any) {
-        console.log(
-          "[Update Quotation] PUT /quotations/:id error:",
-          putErr?.message,
-          putErr?.response?.data,
-        );
-        if (putErr?.response?.status === 405) {
-          updateRes = await axios.patch(
-            `${baseURL}/quotations/${activeQuotationId}`,
-            payload,
-            {
-              headers,
-              params,
-            },
-          );
-        } else {
-          throw putErr;
-        }
-      }
-
-      console.log("[Update Quotation] Response:", updateRes?.data);
+      await axios.put(`${baseURL}/quotations/${targetId}`, payload, {
+        headers,
+      });
 
       Alert.alert(
         "Success",
-        `Quotation ${quotationReference || ""} updated successfully!`,
+        "Quotation updated successfully!",
         [
           {
             text: "OK",
             onPress: () => {
               if (onSuccess) onSuccess();
-              router.push("/quotation");
+              router.replace("/quotation");
             },
           },
         ],
         { cancelable: false },
       );
     } catch (err: any) {
-      console.log(
-        "Error updating quotation:",
-        err?.message || err,
-        err?.response?.data,
-      );
-      const serverData = err?.response?.data;
-      let errMsg =
-        serverData?.message ||
-        serverData?.error ||
+      console.log("Error updating quotation:", err?.message || err);
+      const errMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
         err?.message ||
-        "Could not update quotation. Please check your network and try again.";
+        "Could not update quotation. Please check your connection and try again.";
 
-      if (serverData?.errors && typeof serverData.errors === "object") {
-        const errorDetails = Object.values(serverData.errors).flat().join("\n");
-        if (errorDetails) {
-          errMsg = `${errMsg}\n\n${errorDetails}`;
-        }
-      }
-
-      Alert.alert("Update Note", errMsg, [{ text: "OK" }]);
+      Alert.alert("Update Failed", errMsg, [{ text: "OK" }]);
     } finally {
       setIsSubmitting(false);
     }
@@ -1899,8 +1374,13 @@ export default function EditQuotationScreen({
         translucent={false}
       />
 
-      {/* HEADER */}
-      <View style={styles.header}>
+      {/* HEADER SECTION WITH LINEAR GRADIENT & ISOMETRIC BADGE */}
+      <LinearGradient
+        colors={["#063b89", "#0B4DA8", "#1E62D0"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}
+      >
         <View style={styles.headerTop}>
           <TouchableOpacity
             style={styles.backBtn}
@@ -1911,16 +1391,28 @@ export default function EditQuotationScreen({
           </TouchableOpacity>
           <View style={styles.headerTitleGroup}>
             <Text style={styles.headerTitle}>Edit Quotation</Text>
-            <Text style={styles.headerSubtitle}>
-              {quotationReference ? `${quotationReference} · Commercial Quote` : "Commercial Quote"}
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {quotationReference
+                ? `${quotationReference} · Commercial Quote`
+                : "Commercial Quote"}
             </Text>
           </View>
+
+          {/* Isometric Document Graphic */}
+          <View style={styles.headerDocIsometric}>
+            <View style={styles.headerDocLine1} />
+            <View style={styles.headerDocLine2} />
+            <View style={styles.headerDocLine3} />
+          </View>
         </View>
-      </View>
+      </LinearGradient>
 
       {loadingDetail ? (
         <View style={styles.centeredLoadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
+          <Text style={{ marginTop: 12, color: "#64748B", fontSize: 13 }}>
+            Loading Quotation Details...
+          </Text>
         </View>
       ) : (
         <KeyboardAvoidingView
@@ -1951,416 +1443,560 @@ export default function EditQuotationScreen({
               <View style={styles.loadingBanner}>
                 <ActivityIndicator size="small" color="#2563EB" />
                 <Text style={styles.loadingBannerText}>
-                  Loading master data (customers, sites, mix designs, taxes)...
+                  Loading master data...
                 </Text>
               </View>
             )}
 
-            {/* 1. CUSTOMER DROPDOWN */}
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>
-                Customer <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={openCustomerPicker}
-                activeOpacity={0.75}
-              >
-                <Text
-                  style={[
-                    styles.dropdownText,
-                    !selectedCustomerItem && styles.dropdownPlaceholder,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {selectedCustomerItem?.legal_name || "Select Customer"}
+            {/* ========================================================================= */}
+            {/* CARD 1: QUOTATION INFORMATION (EXACT UI MATCH) */}
+            {/* ========================================================================= */}
+            <View style={styles.cardContainer}>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.cardHeaderIndicator} />
+                <MaterialCommunityIcons
+                  name="clipboard-text-outline"
+                  size={18}
+                  color="#4F46E5"
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.cardHeaderTitle}>
+                  Quotation Information
                 </Text>
-                <Ionicons name="chevron-down" size={18} color="#64748B" />
-              </TouchableOpacity>
-            </View>
+              </View>
 
-            {/* 2. DELIVERY SITE DROPDOWN */}
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>
-                Delivery Site <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={openSitePicker}
-                activeOpacity={0.75}
-              >
-                <Text
-                  style={[
-                    styles.dropdownText,
-                    !selectedSiteItem && styles.dropdownPlaceholder,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {selectedSiteItem?.name || "Select Delivery Site"}
-                </Text>
-                <Ionicons name="chevron-down" size={18} color="#64748B" />
-              </TouchableOpacity>
-            </View>
-
-            {/* 3. SALES EXECUTIVE DROPDOWN */}
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Sales Executive</Text>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={openSalesExecutivePicker}
-                activeOpacity={0.75}
-              >
-                {(() => {
-                  const targetId =
-                    storedSalesExecutiveId ??
-                    initialSalesExecId ??
-                    passedQuotation?.sales_executive_id ??
-                    passedQuotation?.sales_executive?.id;
-
-                  const matched =
-                    selectedSalesExecutiveItem ||
-                    (targetId && cachedSalesExecutives.length > 0
-                      ? cachedSalesExecutives.find(
-                          (se) => Number(se.id) === Number(targetId),
-                        )
-                      : null) ||
-                    (cachedSalesExecutives.length > 0
-                      ? cachedSalesExecutives[0]
-                      : null);
-
-                  const displayText = matched
-                    ? cleanSalesExecutiveName(matched.label)
-                    : "Loading Sales Executive...";
-
-                  const isPlaceholder = !matched;
-
-                  return (
+              {/* 2-Column Fields Grid */}
+              <View style={styles.gridRow}>
+                {/* Customer */}
+                <View style={styles.gridCol}>
+                  <View style={styles.fieldLabelRow}>
+                    <Ionicons name="person-outline" size={14} color="#4F46E5" />
+                    <Text style={styles.fieldLabel}>
+                      Customer <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.dropdownInput}
+                    onPress={openCustomerPicker}
+                    activeOpacity={0.75}
+                  >
                     <Text
                       style={[
-                        styles.dropdownText,
-                        isPlaceholder && styles.dropdownPlaceholder,
+                        styles.dropdownInputText,
+                        !selectedCustomerItem && styles.dropdownPlaceholder,
                       ]}
                       numberOfLines={1}
                     >
-                      {displayText}
+                      {selectedCustomerItem?.legal_name || "Select Customer"}
                     </Text>
-                  );
-                })()}
-                <Ionicons name="chevron-down" size={18} color="#64748B" />
-              </TouchableOpacity>
-            </View>
+                    <Ionicons name="chevron-down" size={16} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
 
-            {/* 4. VALIDITY DATE CALENDAR */}
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>
-                Validity Date <Text style={styles.requiredAsterisk}>*</Text>
-              </Text>
-              <TouchableOpacity
-                style={styles.datePickerBtn}
-                onPress={() => openCalendar("validity")}
-                activeOpacity={0.75}
-              >
-                <Ionicons name="calendar-outline" size={16} color="#2563EB" />
-                <Text style={styles.datePickerBtnText}>
-                  {formatDisplayDate(validityDate)}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.productsSectionHeader}>
-              <Text style={styles.productsSectionTitle}>
-                Products & Concrete Mixes ({items.length})
-              </Text>
-            </View>
-
-            {items.map((item, index) => {
-              return (
-                <View
-                  key={item.id}
-                  style={styles.productCard}
-                  onLayout={(e) => {
-                    productYRefs.current[index] = e.nativeEvent.layout.y;
-                  }}
-                >
-                  {/* Product Header */}
-                  <View style={styles.productCardHeader}>
-                    <View style={styles.productIndexBadge}>
-                      <Text style={styles.productIndexText}>#{index + 1}</Text>
-                    </View>
-                    <Text style={styles.productCardTitle}>
-                      {item.mix_design_name || "Concrete Product"}
-                    </Text>
-
-                    {items.length > 1 && (
-                      <TouchableOpacity
-                        style={styles.deleteProductBtn}
-                        onPress={() => handleRemoveItem(index)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={17}
-                          color="#DC2626"
-                        />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {/* Product / Mix Design Dropdown */}
-                  <View style={styles.itemFieldGroup}>
-                    <Text style={styles.label}>
-                      Product or mix design{" "}
+                {/* Delivery Site */}
+                <View style={styles.gridCol}>
+                  <View style={styles.fieldLabelRow}>
+                    <Ionicons
+                      name="location-outline"
+                      size={14}
+                      color="#4F46E5"
+                    />
+                    <Text style={styles.fieldLabel}>
+                      Delivery Site{" "}
                       <Text style={styles.requiredAsterisk}>*</Text>
                     </Text>
-                    <TouchableOpacity
-                      style={styles.dropdownButton}
-                      onPress={() => openMixDesignPicker(index)}
-                      activeOpacity={0.75}
-                    >
-                      <Text
-                        style={[
-                          styles.dropdownText,
-                          !item.mix_design_id && styles.dropdownPlaceholder,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {item.mix_design_name || "Select Product or Mix Design"}
-                      </Text>
-                      <Ionicons name="chevron-down" size={18} color="#64748B" />
-                    </TouchableOpacity>
                   </View>
+                  <TouchableOpacity
+                    style={styles.dropdownInput}
+                    onPress={openSitePicker}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownInputText,
+                        !selectedSiteItem && styles.dropdownPlaceholder,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {selectedSiteItem?.name || "Select Delivery Site"}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-                  <View style={styles.rowTwoCol}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.label}>
-                        Quantity in m³{" "}
-                        <Text style={styles.requiredAsterisk}>*</Text>
-                      </Text>
-                      <TextInput
-                        style={styles.textInput}
-                        keyboardType="decimal-pad"
-                        value={item.quantity}
-                        onChangeText={(val) =>
-                          handleUpdateItem(index, "quantity", val)
-                        }
-                        onFocus={() => handleInputFocus(`product_${index}`)}
-                        onBlur={handleInputBlur}
-                        placeholder="e.g. 6"
-                        placeholderTextColor="#94A3B8"
-                      />
+              {/* Row 2: Sales Executive & Validity Date */}
+              <View style={[styles.gridRow, { marginTop: 12 }]}>
+                {/* Sales Executive */}
+                <View style={styles.gridCol}>
+                  <View style={styles.fieldLabelRow}>
+                    <Ionicons
+                      name="briefcase-outline"
+                      size={14}
+                      color="#4F46E5"
+                    />
+                    <Text style={styles.fieldLabel}>Sales Executive</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.dropdownInput}
+                    onPress={openSalesExecutivePicker}
+                    activeOpacity={0.75}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownInputText,
+                        !selectedSalesExecutiveItem &&
+                          styles.dropdownPlaceholder,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {selectedSalesExecutiveItem
+                        ? cleanSalesExecutiveName(
+                            selectedSalesExecutiveItem.label,
+                          )
+                        : "Select Sales Executive"}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Validity Date */}
+                <View style={styles.gridCol}>
+                  <View style={styles.fieldLabelRow}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={14}
+                      color="#4F46E5"
+                    />
+                    <Text style={styles.fieldLabel}>
+                      Validity Date{" "}
+                      <Text style={styles.requiredAsterisk}>*</Text>
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.datePickerBtn}
+                    onPress={() => openCalendar("validity")}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.dateIconWrapper}>
+                      <Ionicons name="calendar" size={14} color="#4F46E5" />
+                    </View>
+                    <Text style={styles.datePickerBtnText} numberOfLines={1}>
+                      {formatDisplayDate(validityDate)}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* CARD 2: PRODUCTS & CONCRETE MIXES (EXACT UI MATCH) */}
+            {/* ========================================================================= */}
+            <View style={styles.cardContainer}>
+              <View style={styles.productsSectionHeader}>
+                <MaterialCommunityIcons
+                  name="layers-outline"
+                  size={20}
+                  color="#4F46E5"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.productsSectionTitle}>
+                  Products & Concrete Mixes ({items.length})
+                </Text>
+              </View>
+
+              {items.map((item, index) => {
+                const itemNumberStr = String(index + 1).padStart(2, "0");
+                return (
+                  <View
+                    key={item.id}
+                    style={styles.productCard}
+                    onLayout={(e) => {
+                      productYRefs.current[index] = e.nativeEvent.layout.y;
+                    }}
+                  >
+                    {/* Top Bar inside Product Card */}
+                    <View style={styles.productCardTopBar}>
+                      <View style={styles.productCardBadgeRow}>
+                        <View style={styles.productNumberBadge}>
+                          <Text style={styles.productNumberBadgeText}>
+                            {itemNumberStr}
+                          </Text>
+                        </View>
+                        <Text style={styles.productCardTitle}>
+                          Concrete Product
+                        </Text>
+                      </View>
+
+                      {items.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => handleRemoveItem(index)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={17}
+                            color="#DC2626"
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
 
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.label}>
-                        Rate in ₹ <Text style={styles.requiredAsterisk}>*</Text>
-                      </Text>
-                      <TextInput
-                        style={styles.textInput}
-                        keyboardType="decimal-pad"
-                        value={item.rate}
-                        onChangeText={(val) =>
-                          handleUpdateItem(index, "rate", val)
-                        }
-                        onFocus={() => handleInputFocus(`product_${index}`)}
-                        onBlur={handleInputBlur}
-                        placeholder="e.g. 5000"
-                        placeholderTextColor="#94A3B8"
-                      />
-                    </View>
-                  </View>
-
-                  {/* Sales Tax Dropdown */}
-                  <View style={styles.itemFieldGroup}>
-                    <Text style={styles.label}>Sales tax</Text>
-                    <TouchableOpacity
-                      style={styles.dropdownButton}
-                      onPress={() => openTaxPicker(index)}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={styles.dropdownText} numberOfLines={1}>
-                        {item.tax_name || "GST 18%"}
-                      </Text>
-                      <Ionicons name="chevron-down" size={18} color="#64748B" />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Pump Type Dropdown & Pump Rate in ₹ (Side-by-Side) */}
-                  <View style={styles.rowTwoCol}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.label}>Pump type</Text>
+                    {/* 1. Product or Mix Design */}
+                    <View style={styles.itemFieldGroup}>
+                      <View style={styles.fieldLabelRow}>
+                        <MaterialCommunityIcons
+                          name="cube-outline"
+                          size={15}
+                          color="#4F46E5"
+                        />
+                        <Text style={styles.fieldLabel}>
+                          Product or mix design{" "}
+                          <Text style={styles.requiredAsterisk}>*</Text>
+                        </Text>
+                      </View>
                       <TouchableOpacity
-                        style={styles.dropdownButton}
-                        onPress={() => openPumpPicker(index)}
+                        style={styles.dropdownInput}
+                        onPress={() => openMixDesignPicker(index)}
                         activeOpacity={0.75}
                       >
                         <Text
                           style={[
-                            styles.dropdownText,
-                            !item.concrete_pump && styles.dropdownPlaceholder,
+                            styles.dropdownInputText,
+                            !item.mix_design_id && styles.dropdownPlaceholder,
                           ]}
                           numberOfLines={1}
                         >
-                          {formatPumpType(item.concrete_pump) || "Select Pump Type"}
+                          {item.mix_design_name ||
+                            "Select Product or Mix Design"}
                         </Text>
-                        <Ionicons name="chevron-down" size={18} color="#64748B" />
+                        <Ionicons
+                          name="chevron-down"
+                          size={16}
+                          color="#64748B"
+                        />
                       </TouchableOpacity>
                     </View>
 
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.label}>Pump rate in ₹</Text>
-                      <TextInput
-                        style={styles.textInput}
-                        keyboardType="decimal-pad"
-                        value={item.pump_rate ?? "0"}
-                        onChangeText={(val) =>
-                          handleUpdateItem(index, "pump_rate", val)
-                        }
-                        onFocus={() => handleInputFocus(`product_${index}`)}
-                        onBlur={handleInputBlur}
-                        placeholder="0"
-                        placeholderTextColor="#94A3B8"
-                      />
+                    {/* 2. 2-Col: Quantity & Rate */}
+                    <View style={styles.gridRow}>
+                      <View style={styles.gridCol}>
+                        <View style={styles.fieldLabelRow}>
+                          <MaterialCommunityIcons
+                            name="cube-outline"
+                            size={15}
+                            color="#4F46E5"
+                          />
+                          <Text style={styles.fieldLabel}>
+                            Quantity in m³{" "}
+                            <Text style={styles.requiredAsterisk}>*</Text>
+                          </Text>
+                        </View>
+                        <TextInput
+                          style={styles.textInput}
+                          keyboardType="decimal-pad"
+                          value={item.quantity}
+                          onChangeText={(val) =>
+                            handleUpdateItem(index, "quantity", val)
+                          }
+                          onFocus={() => handleInputFocus(`product_${index}`)}
+                          onBlur={handleInputBlur}
+                          placeholder="0"
+                          placeholderTextColor="#94A3B8"
+                        />
+                      </View>
+
+                      <View style={styles.gridCol}>
+                        <View style={styles.fieldLabelRow}>
+                          <MaterialCommunityIcons
+                            name="cash-multiple"
+                            size={15}
+                            color="#4F46E5"
+                          />
+                          <Text style={styles.fieldLabel}>
+                            Rate in ₹{" "}
+                            <Text style={styles.requiredAsterisk}>*</Text>
+                          </Text>
+                        </View>
+                        <TextInput
+                          style={styles.textInput}
+                          keyboardType="decimal-pad"
+                          value={item.rate}
+                          onChangeText={(val) =>
+                            handleUpdateItem(index, "rate", val)
+                          }
+                          onFocus={() => handleInputFocus(`product_${index}`)}
+                          onBlur={handleInputBlur}
+                          placeholder="0"
+                          placeholderTextColor="#94A3B8"
+                        />
+                      </View>
+                    </View>
+
+                    {/* 3. Sales Tax */}
+                    <View style={[styles.itemFieldGroup, { marginTop: 12 }]}>
+                      <View style={styles.fieldLabelRow}>
+                        <MaterialCommunityIcons
+                          name="percent"
+                          size={15}
+                          color="#4F46E5"
+                        />
+                        <Text style={styles.fieldLabel}>Sales tax</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.dropdownInput}
+                        onPress={() => openTaxPicker(index)}
+                        activeOpacity={0.75}
+                      >
+                        <Text
+                          style={styles.dropdownInputText}
+                          numberOfLines={1}
+                        >
+                          {item.tax_name || "GST 18% (Sales)"}
+                        </Text>
+                        <Ionicons
+                          name="chevron-down"
+                          size={16}
+                          color="#64748B"
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* 4. 2-Col: Pump Type & Pump Rate */}
+                    <View style={[styles.gridRow, { marginTop: 12 }]}>
+                      <View style={styles.gridCol}>
+                        <View style={styles.fieldLabelRow}>
+                          <MaterialCommunityIcons
+                            name="truck-delivery-outline"
+                            size={15}
+                            color="#4F46E5"
+                          />
+                          <Text style={styles.fieldLabel}>Pump type</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.dropdownInput}
+                          onPress={() => openPumpPicker(index)}
+                          activeOpacity={0.75}
+                        >
+                          <Text
+                            style={[
+                              styles.dropdownInputText,
+                              !item.concrete_pump && styles.dropdownPlaceholder,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {formatPumpType(item.concrete_pump) ||
+                              "Select Pump Type"}
+                          </Text>
+                          <Ionicons
+                            name="chevron-down"
+                            size={16}
+                            color="#64748B"
+                          />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.gridCol}>
+                        <View style={styles.fieldLabelRow}>
+                          <MaterialCommunityIcons
+                            name="speedometer"
+                            size={15}
+                            color="#4F46E5"
+                          />
+                          <Text style={styles.fieldLabel}>Pump rate in ₹</Text>
+                        </View>
+                        <TextInput
+                          style={styles.textInput}
+                          keyboardType="decimal-pad"
+                          value={item.pump_rate}
+                          onChangeText={(val) =>
+                            handleUpdateItem(index, "pump_rate", val)
+                          }
+                          onFocus={() => handleInputFocus(`product_${index}`)}
+                          onBlur={handleInputBlur}
+                          placeholder="0"
+                          placeholderTextColor="#94A3B8"
+                        />
+                      </View>
+                    </View>
+
+                    {/* Calculations Strip inside Product Card */}
+                    <View style={styles.calcStrip}>
+                      <View style={styles.calcStripItem}>
+                        <Text style={styles.calcStripLabel}>
+                          Material Untaxed
+                        </Text>
+                        <Text style={styles.calcStripValue}>
+                          ₹
+                          {formatAmountWithDecimals(
+                            item.calculation.materialUntaxed ||
+                              item.calculation.untaxedAmount,
+                          )}
+                        </Text>
+                      </View>
+
+                      <View style={styles.calcStripItem}>
+                        <Text style={styles.calcStripLabel}>
+                          Tax ({item.tax_rate}%)
+                        </Text>
+                        <Text style={styles.calcStripValue}>
+                          ₹
+                          {formatAmountWithDecimals(item.calculation.taxAmount)}
+                        </Text>
+                      </View>
+
+                      <View style={styles.calcItemTotalBox}>
+                        <Text style={styles.calcItemTotalLabel}>
+                          Item Total
+                        </Text>
+                        <Text style={styles.calcItemTotalValue}>
+                          ₹
+                          {formatAmountWithDecimals(
+                            item.calculation.amountTotal,
+                          )}
+                        </Text>
+                      </View>
                     </View>
                   </View>
+                );
+              })}
 
-                  {/* Line Item Calculated Subtotal Strip */}
-                  <View style={styles.lineItemCalcBox}>
-                    <View>
-                      <Text style={styles.lineItemCalcLabel}>
-                        Material Untaxed
-                      </Text>
-                      <Text style={styles.lineItemCalcValue}>
-                        ₹
-                        {formatAmountWithDecimals(
-                          item.calculation.untaxedAmount,
-                        )}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: "center" }}>
-                      <Text style={styles.lineItemCalcLabel}>
-                        Tax ({item.tax_rate}%)
-                      </Text>
-                      <Text style={styles.lineItemCalcValue}>
-                        ₹{formatAmountWithDecimals(item.calculation.taxAmount)}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text style={styles.lineItemCalcLabelTotal}>
-                        Item Total
-                      </Text>
-                      <Text style={styles.lineItemCalcValueTotal}>
-                        ₹
-                        {formatAmountWithDecimals(item.calculation.amountTotal)}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-
-            <TouchableOpacity
-              style={styles.addProductButton}
-              onPress={handleAddItem}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="add-circle-outline" size={18} color="#2563EB" />
-              <Text style={styles.addProductButtonText}>
-                + Add another product
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.taxInclusiveBox}
-              onPress={toggleTaxInclusive}
-              activeOpacity={0.8}
-            >
-              <View
-                style={[
-                  styles.checkboxBox,
-                  isTaxInclusive && styles.checkboxBoxChecked,
-                ]}
+              {/* "+ Add another product" Dashed Button */}
+              <TouchableOpacity
+                style={styles.addProductDashedBtn}
+                onPress={handleAddItem}
+                activeOpacity={0.75}
               >
-                {isTaxInclusive && (
-                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                )}
-              </View>
-              <Text style={styles.taxInclusiveText}>Tax inclusive rate</Text>
-            </TouchableOpacity>
+                <Ionicons name="add-circle-outline" size={18} color="#2563EB" />
+                <Text style={styles.addProductDashedBtnText}>
+                  Add another product
+                </Text>
+              </TouchableOpacity>
 
-            {/* 6. TERMS / NOTES */}
+              {/* "Tax inclusive rate" Row */}
+              <TouchableOpacity
+                style={styles.taxInclusiveRow}
+                onPress={toggleTaxInclusive}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={isTaxInclusive ? "checkbox" : "square-outline"}
+                  size={20}
+                  color={isTaxInclusive ? "#2563EB" : "#94A3B8"}
+                />
+                <Text style={styles.taxInclusiveText}>Tax inclusive rate</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ========================================================================= */}
+            {/* CARD 3: TERMS / NOTES (EXACT UI MATCH) */}
+            {/* ========================================================================= */}
             <View
-              style={styles.formGroup}
+              style={styles.cardContainer}
               onLayout={(e) => {
                 notesYRef.current = e.nativeEvent.layout.y;
               }}
             >
-              <Text style={styles.label}>Terms / notes</Text>
+              <View style={styles.cardHeaderRow}>
+                <Ionicons
+                  name="document-text-outline"
+                  size={18}
+                  color="#4F46E5"
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.cardHeaderTitle}>Terms / Notes</Text>
+              </View>
+
               <TextInput
-                style={styles.notesInput}
+                style={styles.notesTextInput}
                 multiline
-                numberOfLines={4}
                 value={notes}
                 onChangeText={setNotes}
                 onFocus={() => handleInputFocus("notes")}
                 onBlur={handleInputBlur}
-                placeholder="Delivery schedule, special pumping terms, site access..."
+                placeholder="Delivery subject to schedule confirmation"
                 placeholderTextColor="#94A3B8"
               />
             </View>
 
+            {/* ========================================================================= */}
+            {/* CARD 4: TOTAL ESTIMATE (EXACT UI MATCH) */}
+            {/* ========================================================================= */}
             <View
-              style={styles.totalEstimateCard}
+              style={styles.cardContainer}
               onLayout={(e) => {
                 estimateYRef.current = e.nativeEvent.layout.y;
               }}
             >
-              <View style={styles.totalEstimateHeaderRow}>
-                <Text style={styles.totalEstimateLabel}>Total estimate</Text>
-                <Text style={styles.totalEstimateAmount}>
-                  ₹{formatAmountWithDecimals(totalSummary.amountTotal)}
-                </Text>
+              <View style={styles.estimateTopRow}>
+                <View style={styles.estimateLeftGroup}>
+                  <View style={styles.estimateTitleRow}>
+                    <Ionicons
+                      name="calculator-outline"
+                      size={18}
+                      color="#4F46E5"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.cardHeaderTitle}>Total Estimate</Text>
+                  </View>
+                  <Text style={styles.estimateSubtext}>
+                    Untaxed: ₹
+                    {formatAmountWithDecimals(totalSummary.untaxedAmount)} ·
+                    Tax: ₹{formatAmountWithDecimals(totalSummary.taxAmount)}
+                  </Text>
+                </View>
+
+                <View style={styles.estimateBadge}>
+                  <Text style={styles.estimateBadgeText}>
+                    ₹{formatAmountWithDecimals(totalSummary.amountTotal)}
+                  </Text>
+                </View>
               </View>
 
-              <View style={styles.totalEstimateBreakdownRow}>
-                <Text style={styles.totalEstimateBreakdownText}>
-                  Untaxed: ₹
-                  {formatAmountWithDecimals(totalSummary.untaxedAmount)} · Tax:
-                  ₹{formatAmountWithDecimals(totalSummary.taxAmount)}
-                </Text>
-              </View>
-
-              <View style={styles.estimateAdjustmentContainer}>
-                <Text style={styles.estimateAdjustmentLabel}>Adjustment in ₹</Text>
+              {/* Adjustment Row */}
+              <View style={styles.adjustmentRow}>
+                <View style={styles.fieldLabelRow}>
+                  <Ionicons name="create-outline" size={14} color="#4F46E5" />
+                  <Text style={styles.fieldLabel}>Adjustment in ₹</Text>
+                </View>
                 <TextInput
-                  style={styles.estimateAdjustmentInput}
+                  style={styles.textInput}
                   keyboardType="decimal-pad"
                   value={adjustment}
                   onChangeText={handleAdjustmentChange}
                   onFocus={() => handleInputFocus("adjustment")}
                   onBlur={handleInputBlur}
-                  placeholder="0.00"
+                  placeholder="0"
                   placeholderTextColor="#94A3B8"
                 />
               </View>
 
-              <View style={styles.adjustmentCalcRow}>
-                <Text style={styles.adjustmentCalcText}>
-                  Amount: ₹{formatAmountWithDecimals(totalSummary.itemsAmountTotal)} +
-                  Adjust: ₹{formatAmountWithDecimals(totalSummary.adjustment)} = ₹
-                  {formatAmountWithDecimals(totalSummary.amountTotal)}
+              {/* Blue Banner Summary Formula */}
+              <View style={styles.summaryFormulaBanner}>
+                <MaterialCommunityIcons
+                  name="cash-multiple"
+                  size={18}
+                  color="#1D4ED8"
+                />
+                <Text style={styles.summaryFormulaText} numberOfLines={1}>
+                  Amount: ₹
+                  {formatAmountWithDecimals(totalSummary.itemsAmountTotal)} +
+                  Adjust: ₹{formatAmountWithDecimals(totalSummary.adjustment)} =
+                  ₹{formatAmountWithDecimals(totalSummary.amountTotal)}
                 </Text>
               </View>
 
-              <Text style={styles.totalEstimateFooterNote}>
+              {/* Commercial Quote Footnote */}
+              <Text style={styles.estimateFootnote}>
                 Commercial quote estimate · Ready for plant dispatch
               </Text>
             </View>
 
+            {/* ========================================================================= */}
+            {/* PRIMARY UPDATE ACTION BUTTON */}
+            {/* ========================================================================= */}
             <TouchableOpacity
-              style={[
-                styles.saveDraftButton,
-                isSubmitting && styles.saveDraftButtonDisabled,
-              ]}
+              style={styles.primarySubmitBtn}
               onPress={handleSubmitQuotation}
               disabled={isSubmitting}
               activeOpacity={0.85}
@@ -2368,89 +2004,100 @@ export default function EditQuotationScreen({
               {isSubmitting ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.saveDraftButtonText}>Save Changes</Text>
+                <>
+                  <Ionicons
+                    name="paper-plane-outline"
+                    size={18}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.primarySubmitBtnText}>
+                    Update Quotation
+                  </Text>
+                </>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.cancelButton}
+              style={styles.cancelBtn}
               onPress={handleBack}
               activeOpacity={0.7}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
       )}
 
+      {/* ========================================================================= */}
+      {/* SEARCHABLE PICKER MODAL */}
+      {/* ========================================================================= */}
       <Modal
         visible={pickerModalVisible}
-        transparent={true}
-        animationType="slide"
+        transparent
+        animationType="fade"
         onRequestClose={() => setPickerModalVisible(false)}
       >
-        <View style={styles.pickerModalOverlay}>
-          <View style={styles.pickerModalContent}>
-            {/* Modal Title & Close */}
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setPickerModalVisible(false)}
+        >
+          <View
+            style={styles.pickerModalContent}
+            onStartShouldSetResponder={() => true}
+          >
             <View style={styles.pickerModalHeader}>
               <Text style={styles.pickerModalTitle}>{pickerConfig.title}</Text>
               <TouchableOpacity
-                style={styles.pickerCloseCircle}
                 onPress={() => setPickerModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="close" size={20} color="#64748B" />
+                <Ionicons name="close" size={22} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            {/* Search Input */}
-            <View style={styles.pickerSearchBox}>
-              <Ionicons name="search" size={17} color="#94A3B8" />
-              <TextInput
-                style={styles.pickerSearchInput}
-                placeholder="Search..."
-                placeholderTextColor="#94A3B8"
-                value={pickerSearch}
-                onChangeText={setPickerSearch}
-                clearButtonMode="while-editing"
-                autoFocus
-              />
-              {pickerSearch.length > 0 && (
-                <TouchableOpacity onPress={() => setPickerSearch("")}>
-                  <Ionicons name="close-circle" size={16} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
-            </View>
+            {pickerConfig.items.length > 5 && (
+              <View style={styles.pickerSearchBox}>
+                <Ionicons name="search" size={16} color="#94A3B8" />
+                <TextInput
+                  style={styles.pickerSearchInput}
+                  placeholder="Search..."
+                  placeholderTextColor="#94A3B8"
+                  value={pickerSearch}
+                  onChangeText={setPickerSearch}
+                />
+              </View>
+            )}
 
-            {/* Items List */}
             <FlatList
               data={filteredPickerItems}
-              keyExtractor={(item) => String(item.id ?? "null-id")}
-              keyboardShouldPersistTaps="handled"
+              keyExtractor={(item, index) =>
+                item.id !== null ? String(item.id) : `null-${index}`
+              }
               renderItem={({ item }) => {
                 const isSelected = item.id === pickerConfig.selectedId;
                 return (
                   <TouchableOpacity
                     style={[
                       styles.pickerItemRow,
-                      isSelected && styles.pickerItemRowSelected,
+                      isSelected && styles.pickerItemRowActive,
                     ]}
                     onPress={() => {
                       pickerConfig.onSelect(item);
                       setPickerModalVisible(false);
                     }}
-                    activeOpacity={0.7}
                   >
                     <View style={{ flex: 1 }}>
                       <Text
                         style={[
                           styles.pickerItemLabel,
-                          isSelected && styles.pickerItemLabelSelected,
+                          isSelected && styles.pickerItemLabelActive,
                         ]}
                       >
                         {item.label}
                       </Text>
                       {item.subLabel ? (
-                        <Text style={styles.pickerItemSub}>
+                        <Text style={styles.pickerItemSubLabel}>
                           {item.subLabel}
                         </Text>
                       ) : null}
@@ -2458,47 +2105,54 @@ export default function EditQuotationScreen({
                     {isSelected && (
                       <Ionicons
                         name="checkmark-circle"
-                        size={20}
+                        size={18}
                         color="#2563EB"
                       />
                     )}
                   </TouchableOpacity>
                 );
               }}
-              ListEmptyComponent={
-                <View style={styles.pickerEmptyContainer}>
-                  <Text style={styles.pickerEmptyText}>No matches found</Text>
-                </View>
-              }
+              style={{ maxHeight: 340 }}
             />
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
+      {/* ========================================================================= */}
+      {/* INTERACTIVE CALENDAR MODAL */}
+      {/* ========================================================================= */}
       <Modal
         visible={calendarModalVisible}
-        transparent={true}
+        transparent
         animationType="fade"
         onRequestClose={() => setCalendarModalVisible(false)}
       >
-        <View style={styles.calendarModalOverlay}>
-          <View style={styles.calendarModalContent}>
-            {/* Calendar Header */}
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setCalendarModalVisible(false)}
+        >
+          <View
+            style={styles.calendarModalContent}
+            onStartShouldSetResponder={() => true}
+          >
             <View style={styles.calendarModalHeader}>
               <Text style={styles.calendarModalTitle}>
                 {calendarTarget === "quote"
-                  ? "Select Quote Date"
+                  ? "Select Quotation Date"
                   : "Select Validity Date"}
               </Text>
-              <TouchableOpacity onPress={() => setCalendarModalVisible(false)}>
-                <Ionicons name="close" size={20} color="#64748B" />
+              <TouchableOpacity
+                onPress={() => setCalendarModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            {/* Month & Year Navigation */}
-            <View style={styles.monthNavRow}>
+            {/* Month / Year Navigator */}
+            <View style={styles.calendarMonthRow}>
               <TouchableOpacity
-                style={styles.monthNavBtn}
                 onPress={() => {
                   if (calendarMonth === 0) {
                     setCalendarMonth(11);
@@ -2507,11 +2161,12 @@ export default function EditQuotationScreen({
                     setCalendarMonth((m) => m - 1);
                   }
                 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="chevron-back" size={18} color="#2563EB" />
+                <Ionicons name="chevron-back" size={20} color="#0F172A" />
               </TouchableOpacity>
 
-              <Text style={styles.monthNavTitle}>
+              <Text style={styles.calendarMonthText}>
                 {
                   [
                     "January",
@@ -2532,7 +2187,6 @@ export default function EditQuotationScreen({
               </Text>
 
               <TouchableOpacity
-                style={styles.monthNavBtn}
                 onPress={() => {
                   if (calendarMonth === 11) {
                     setCalendarMonth(0);
@@ -2541,78 +2195,55 @@ export default function EditQuotationScreen({
                     setCalendarMonth((m) => m + 1);
                   }
                 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="chevron-forward" size={18} color="#2563EB" />
+                <Ionicons name="chevron-forward" size={20} color="#0F172A" />
               </TouchableOpacity>
             </View>
 
-            {/* Quick Presets */}
-            {calendarTarget === "validity" && (
-              <View style={styles.presetsRow}>
-                {[7, 15, 30].map((days) => (
-                  <TouchableOpacity
-                    key={days}
-                    style={styles.presetChip}
-                    onPress={() => {
-                      setValidityDate(getFutureDateString(days));
-                      setCalendarModalVisible(false);
-                    }}
-                  >
-                    <Text style={styles.presetChipText}>+{days} Days</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-
-            {/* Day of Week Headers */}
-            <View style={styles.dayOfWeekRow}>
-              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d, i) => (
-                <Text key={i} style={styles.dayOfWeekText}>
-                  {d}
+            {/* Weekdays Header */}
+            <View style={styles.calendarWeekdaysRow}>
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((w) => (
+                <Text key={w} style={styles.calendarWeekdayText}>
+                  {w}
                 </Text>
               ))}
             </View>
 
             {/* Calendar Days Grid */}
-            <View style={styles.daysGrid}>
-              {/* Empty leading slots */}
+            <View style={styles.calendarDaysGrid}>
               {Array.from({ length: calendarDays.firstDayIndex }).map(
-                (_, index) => (
-                  <View key={`empty-${index}`} style={styles.dayCellEmpty} />
+                (_, idx) => (
+                  <View key={`empty-${idx}`} style={styles.calendarDayCell} />
                 ),
               )}
-
-              {/* Day cells */}
               {Array.from({ length: calendarDays.daysInMonth }).map(
-                (_, index) => {
-                  const day = index + 1;
-                  const currentMonthStr = String(calendarMonth + 1).padStart(
-                    2,
-                    "0",
-                  );
-                  const currentDayStr = String(day).padStart(2, "0");
-                  const cellDateStr = `${calendarYear}-${currentMonthStr}-${currentDayStr}`;
+                (_, idx) => {
+                  const dayNum = idx + 1;
+                  const mStr = String(calendarMonth + 1).padStart(2, "0");
+                  const dStr = String(dayNum).padStart(2, "0");
+                  const thisDateStr = `${calendarYear}-${mStr}-${dStr}`;
                   const isSelected =
                     calendarTarget === "quote"
-                      ? quoteDate === cellDateStr
-                      : validityDate === cellDateStr;
+                      ? quoteDate === thisDateStr
+                      : validityDate === thisDateStr;
 
                   return (
                     <TouchableOpacity
-                      key={`day-${day}`}
+                      key={`day-${dayNum}`}
                       style={[
-                        styles.dayCell,
-                        isSelected && styles.dayCellSelected,
+                        styles.calendarDayCell,
+                        isSelected && styles.calendarDayCellSelected,
                       ]}
-                      onPress={() => handleSelectCalendarDate(day)}
+                      onPress={() => handleSelectCalendarDate(dayNum)}
                     >
                       <Text
                         style={[
-                          styles.dayCellText,
-                          isSelected && styles.dayCellTextSelected,
+                          styles.calendarDayText,
+                          isSelected && styles.calendarDayTextSelected,
                         ]}
                       >
-                        {day}
+                        {dayNum}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -2620,34 +2251,52 @@ export default function EditQuotationScreen({
               )}
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
 }
 
+// ==========================================
+// STYLES (EXACT 1:1 REPLICATION OF IMAGE)
+// ==========================================
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#0B2A4A",
+    backgroundColor: "#063b89",
   },
-  header: {
-    backgroundColor: "#0B2A4A",
+  container: {
+    flex: 1,
+    backgroundColor: "#F3F7FB",
+  },
+  scrollContent: {
+    padding: 14,
+    paddingBottom: 40,
+  },
+  centeredLoadingContainer: {
+    flex: 1,
+    backgroundColor: "#F3F7FB",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  // Gradient Header
+  headerGradient: {
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === "android" ? 14 : 10,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1E3A5F",
+    paddingTop: Platform.OS === "android" ? 12 : 8,
+    paddingBottom: 16,
   },
   headerTop: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -2656,567 +2305,556 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: 0.2,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: "#94A3B8",
+    color: "rgba(255, 255, 255, 0.75)",
+    fontWeight: "500",
     marginTop: 2,
   },
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 40,
-  },
-  centeredLoadingContainer: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
+
+  // Isometric Document Graphic
+  headerDocIsometric: {
+    width: 38,
+    height: 44,
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    borderRadius: 8,
+    padding: 5,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.95)",
     justifyContent: "center",
-    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 4,
   },
-  loadingBanner: {
+  headerDocLine1: {
+    height: 3,
+    backgroundColor: "#2563EB",
+    borderRadius: 1.5,
+    width: "70%",
+    marginBottom: 4,
+  },
+  headerDocLine2: {
+    height: 3,
+    backgroundColor: "#93C5FD",
+    borderRadius: 1.5,
+    width: "85%",
+    marginBottom: 4,
+  },
+  headerDocLine3: {
+    height: 3,
+    backgroundColor: "#CBD5E1",
+    borderRadius: 1.5,
+    width: "50%",
+  },
+
+  // Card Container
+  cardContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 14,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 12,
-    gap: 8,
-  },
-  loadingBannerText: {
-    flex: 1,
-    fontSize: 11,
-    color: "#2563EB",
-    fontWeight: "600",
-  },
-  formGroup: {
     marginBottom: 14,
   },
-  itemFieldGroup: {
-    marginBottom: 12,
+  cardHeaderIndicator: {
+    width: 3.5,
+    height: 16,
+    borderRadius: 2,
+    backgroundColor: "#4F46E5",
+    marginRight: 8,
   },
-  label: {
-    fontSize: 13,
+  cardHeaderTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+
+  // 2-Column Grid Layout
+  gridRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  gridCol: {
+    flex: 1,
+  },
+  fieldLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 5,
+  },
+  fieldLabel: {
+    fontSize: 12,
     fontWeight: "600",
-    color: "#475569",
-    marginBottom: 6,
+    color: "#334155",
   },
   requiredAsterisk: {
     color: "#EF4444",
+    fontWeight: "700",
   },
-  dropdownButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+
+  // Inputs
+  dropdownInput: {
+    height: 42,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E2E8F0",
     borderRadius: 10,
-    paddingHorizontal: 14,
-    height: 48,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.02,
-    shadowRadius: 2,
-    elevation: 1,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  dropdownText: {
-    fontSize: 14,
-    fontWeight: "600",
+  dropdownInputText: {
+    fontSize: 13,
     color: "#0F172A",
+    fontWeight: "600",
     flex: 1,
+    marginRight: 6,
   },
   dropdownPlaceholder: {
     color: "#94A3B8",
     fontWeight: "400",
   },
-  rowTwoCol: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 14,
-  },
   textInput: {
+    height: 42,
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#E2E8F0",
     borderRadius: 10,
-    paddingHorizontal: 14,
-    height: 48,
-    fontSize: 14,
+    paddingHorizontal: 12,
+    fontSize: 13,
     color: "#0F172A",
     fontWeight: "600",
   },
   datePickerBtn: {
+    height: 42,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 10,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 48,
     gap: 8,
+  },
+  dateIconWrapper: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: "#DBEAFE",
+    justifyContent: "center",
+    alignItems: "center",
   },
   datePickerBtnText: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#0F172A",
+    fontWeight: "700",
+    color: "#1E40AF",
   },
 
   // Products Section
   productsSectionHeader: {
-    marginTop: 6,
-    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
   },
   productsSectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#1E293B",
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
   },
   productCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F8FAFC",
     borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    marginBottom: 14,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    padding: 14,
+    marginBottom: 12,
   },
-  productCardHeader: {
+  productCardTopBar: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    borderBottomColor: "#EDF2F7",
   },
-  productIndexBadge: {
-    backgroundColor: "#EFF6FF",
+  productCardBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  productNumberBadge: {
+    backgroundColor: "#4F46E5",
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginRight: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
-  productIndexText: {
-    fontSize: 12,
+  productNumberBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
     fontWeight: "800",
-    color: "#2563EB",
   },
   productCardTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#0F172A",
-    flex: 1,
+    color: "#1E1B4B",
   },
-  deleteProductBtn: {
-    padding: 4,
+  itemFieldGroup: {
+    marginBottom: 0,
   },
-  lineItemCalcBox: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 8,
+
+  // Calculations Strip inside Product Card
+  calcStrip: {
+    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
     padding: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 2,
-    borderWidth: 1,
-    borderColor: "#EEF2F6",
+    marginTop: 12,
   },
-  lineItemCalcLabel: {
+  calcStripItem: {
+    flex: 1,
+  },
+  calcStripLabel: {
     fontSize: 10,
     color: "#64748B",
-    fontWeight: "500",
+    fontWeight: "600",
+    marginBottom: 2,
   },
-  lineItemCalcValue: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#334155",
-    marginTop: 1,
-  },
-  lineItemCalcLabelTotal: {
-    fontSize: 10,
-    color: "#2563EB",
-    fontWeight: "700",
-  },
-  lineItemCalcValueTotal: {
+  calcStripValue: {
     fontSize: 13,
     fontWeight: "800",
-    color: "#2563EB",
-    marginTop: 1,
+    color: "#0F172A",
   },
-  addProductButton: {
-    flexDirection: "row",
+  calcItemTotalBox: {
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+  },
+  calcItemTotalLabel: {
+    fontSize: 10,
+    color: "#1D4ED8",
+    fontWeight: "700",
+  },
+  calcItemTotalValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1D4ED8",
+  },
+
+  // Dashed Add Product Button
+  addProductDashedBtn: {
     borderWidth: 1.5,
     borderColor: "#2563EB",
     borderStyle: "dashed",
     borderRadius: 10,
-    paddingVertical: 12,
+    backgroundColor: "#FFFFFF",
+    height: 44,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     gap: 6,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  addProductButtonText: {
-    fontSize: 14,
+  addProductDashedBtnText: {
+    fontSize: 13,
     fontWeight: "700",
     color: "#2563EB",
   },
 
-  // Tax Inclusive Checkbox Box (Matches reference image)
-  taxInclusiveBox: {
+  // Tax Inclusive Row
+  taxInclusiveRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 16,
-    gap: 10,
-  },
-  checkboxBox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: "#64748B",
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  checkboxBoxChecked: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
+    gap: 8,
+    paddingVertical: 4,
   },
   taxInclusiveText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#2563EB",
+    color: "#334155",
   },
 
   // Notes
-  notesInput: {
-    backgroundColor: "#FFFFFF",
+  notesTextInput: {
     borderWidth: 1,
     borderColor: "#E2E8F0",
     borderRadius: 10,
     padding: 12,
-    height: 85,
-    textAlignVertical: "top",
     fontSize: 13,
     color: "#0F172A",
+    minHeight: 60,
+    textAlignVertical: "top",
+    backgroundColor: "#FFFFFF",
   },
 
-  // Total Estimate Card (Matches reference image)
-  estimateAdjustmentContainer: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  estimateAdjustmentLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#475569",
-    marginBottom: 4,
-  },
-  estimateAdjustmentInput: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 40,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#0F172A",
-  },
-  adjustmentCalcRow: {
-    backgroundColor: "#EFF6FF",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-  },
-  adjustmentCalcText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#1E40AF",
-  },
-  totalEstimateCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    padding: 16,
-    marginBottom: 18,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  totalEstimateHeaderRow: {
+  // Card 4: Total Estimate
+  estimateTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  totalEstimateLabel: {
-    fontSize: 13,
-    color: "#475569",
+  estimateLeftGroup: {
+    flex: 1,
+    marginRight: 10,
+  },
+  estimateTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  estimateSubtext: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 2,
     fontWeight: "500",
   },
-  totalEstimateAmount: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  totalEstimateBreakdownRow: {
-    marginBottom: 6,
-  },
-  totalEstimateBreakdownText: {
-    fontSize: 12,
-    color: "#64748B",
-  },
-  totalEstimateFooterNote: {
-    fontSize: 11,
-    color: "#94A3B8",
-    fontStyle: "italic",
-    marginTop: 2,
-  },
-
-  // Action Buttons
-  saveDraftButton: {
-    backgroundColor: "#2563EB",
+  estimateBadge: {
+    backgroundColor: "#1D4ED8",
     borderRadius: 10,
-    height: 48,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  saveDraftButtonDisabled: {
-    opacity: 0.7,
-  },
-  saveDraftButtonText: {
+  estimateBadgeText: {
     color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
   },
-  cancelButton: {
-    height: 44,
-    justifyContent: "center",
+  adjustmentRow: {
+    marginBottom: 12,
+  },
+  summaryFormulaBanner: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 8,
   },
-  cancelButtonText: {
-    color: "#64748B",
-    fontSize: 14,
+  summaryFormulaText: {
+    color: "#1E40AF",
+    fontSize: 12,
     fontWeight: "700",
+    flex: 1,
+  },
+  estimateFootnote: {
+    fontSize: 11,
+    color: "#64748B",
+    fontStyle: "italic",
+    marginTop: 8,
   },
 
-  // Picker Modal Styles
-  pickerModalOverlay: {
+  // Submit & Cancel Buttons
+  primarySubmitBtn: {
+    backgroundColor: "#1D4ED8",
+    borderRadius: 14,
+    height: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 8,
+    shadowColor: "#1D4ED8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  primarySubmitBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  cancelBtn: {
+    alignItems: "center",
+    paddingVertical: 14,
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+  },
+
+  // Loading Banner
+  loadingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    padding: 10,
+    borderRadius: 10,
+    gap: 8,
+    marginBottom: 12,
+  },
+  loadingBannerText: {
+    fontSize: 12,
+    color: "#2563EB",
+    fontWeight: "500",
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.55)",
+  },
+
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(10, 37, 64, 0.45)",
     justifyContent: "flex-end",
   },
   pickerModalContent: {
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    padding: 18,
     paddingBottom: Platform.OS === "ios" ? 36 : 24,
-    maxHeight: "82%",
+    maxHeight: "80%",
   },
   pickerModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
   pickerModalTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
-  },
-  pickerCloseCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F1F5F9",
-    justifyContent: "center",
-    alignItems: "center",
   },
   pickerSearchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#F1F5F9",
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingHorizontal: 12,
-    height: 40,
+    paddingHorizontal: 10,
+    height: 38,
     marginBottom: 10,
-    gap: 8,
   },
   pickerSearchInput: {
     flex: 1,
+    marginLeft: 6,
     fontSize: 13,
     color: "#0F172A",
-    paddingVertical: 0,
   },
   pickerItemRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 12,
-    paddingHorizontal: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-    borderRadius: 8,
+    borderBottomColor: "#F8FAFC",
   },
-  pickerItemRowSelected: {
+  pickerItemRowActive: {
     backgroundColor: "#EFF6FF",
+    borderRadius: 8,
+    paddingHorizontal: 8,
   },
   pickerItemLabel: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#0F172A",
+    color: "#334155",
   },
-  pickerItemLabelSelected: {
+  pickerItemLabelActive: {
     color: "#2563EB",
     fontWeight: "700",
   },
-  pickerItemSub: {
-    fontSize: 12,
+  pickerItemSubLabel: {
+    fontSize: 11,
     color: "#64748B",
     marginTop: 2,
   },
-  pickerEmptyContainer: {
-    paddingVertical: 30,
-    alignItems: "center",
-  },
-  pickerEmptyText: {
-    fontSize: 13,
-    color: "#94A3B8",
-  },
 
-  // Calendar Modal Styles
-  calendarModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.55)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
+  // Calendar Modal
   calendarModalContent: {
-    width: "100%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: Platform.OS === "ios" ? 36 : 24,
   },
   calendarModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   calendarModalTitle: {
     fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
   },
-  monthNavRow: {
+  calendarMonthRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  monthNavBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#F1F5F9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  monthNavTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-  presetsRow: {
-    flexDirection: "row",
-    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
     marginBottom: 12,
   },
-  presetChip: {
-    backgroundColor: "#EFF6FF",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  presetChipText: {
-    fontSize: 11,
+  calendarMonthText: {
+    fontSize: 14,
     fontWeight: "700",
-    color: "#2563EB",
+    color: "#0F172A",
   },
-  dayOfWeekRow: {
+  calendarWeekdaysRow: {
     flexDirection: "row",
     justifyContent: "space-around",
     marginBottom: 8,
   },
-  dayOfWeekText: {
-    width: 36,
-    textAlign: "center",
+  calendarWeekdayText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#94A3B8",
+    color: "#64748B",
+    width: 38,
+    textAlign: "center",
   },
-  daysGrid: {
+  calendarDaysGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "flex-start",
+    justifyContent: "space-around",
   },
-  dayCellEmpty: {
-    width: "14.28%",
-    height: 36,
-  },
-  dayCell: {
-    width: "14.28%",
-    height: 36,
+  calendarDayCell: {
+    width: 38,
+    height: 38,
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 18,
+    borderRadius: 19,
     marginVertical: 2,
   },
-  dayCellSelected: {
+  calendarDayCellSelected: {
     backgroundColor: "#2563EB",
   },
-  dayCellText: {
+  calendarDayText: {
     fontSize: 13,
-    color: "#1E293B",
     fontWeight: "600",
+    color: "#334155",
   },
-  dayCellTextSelected: {
+  calendarDayTextSelected: {
     color: "#FFFFFF",
     fontWeight: "800",
   },

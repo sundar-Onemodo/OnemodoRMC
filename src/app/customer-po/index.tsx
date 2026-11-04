@@ -1,17 +1,24 @@
 import { baseURL } from "@/components/baseUrl/baseUrlAPI";
+import {
+  AlertButton,
+  AlertType,
+  CustomAlertModal,
+  formatSubmissionError,
+} from "@/components/ui/custom-alert-modal";
 import { Colors } from "@/constants/theme";
 import { fetchDropdowns, StatusDropdownOption } from "@/store/dropdownSlice";
 import { AppDispatch, RootState } from "@/store/store";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import axios from "axios";
-import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   RefreshControl,
@@ -26,12 +33,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  CustomAlertModal,
-  AlertType,
-  AlertButton,
-  formatSubmissionError,
-} from "@/components/ui/custom-alert-modal";
 
 export interface CustomerPOLineItem {
   id: number;
@@ -210,7 +211,7 @@ export interface GenerateSOLineItem {
   converted_qty: number;
   remaining_qty: number;
   so_qty: string;
-  concrete_pump: number | string | null;
+  concrete_pump: string | null;
 }
 
 export const formatPumpType = (type?: any): string => {
@@ -232,7 +233,9 @@ export default function CustomerPOScreen() {
   const dispatch = useDispatch<AppDispatch>();
   const {
     customerPoStatuses,
-    pumps,
+    pumpTypes,
+    customers,
+    sites,
     isLoaded: dropdownsLoaded,
   } = useSelector((state: RootState) => state.dropdowns);
 
@@ -247,7 +250,9 @@ export default function CustomerPOScreen() {
 
   const [search, setSearch] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"All" | number>("All");
-  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "value_high" | "value_low">("newest");
+  const [sortBy, setSortBy] = useState<
+    "newest" | "oldest" | "value_high" | "value_low"
+  >("newest");
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [cardMenuPO, setCardMenuPO] = useState<CustomerPOItem | null>(null);
 
@@ -294,53 +299,41 @@ export default function CustomerPOScreen() {
   );
 
   const pumpOptionsList = useMemo(() => {
-    const list: { label: string; value: number | null }[] = [
+    const list: { label: string; value: string | null }[] = [
       { label: "None / Direct Pour", value: null },
     ];
-    if (Array.isArray(pumps) && pumps.length > 0) {
-      pumps.forEach((p: any) => {
-        if (!p) return;
-        const id = p.id ?? p.value;
-        const label = p.label || p.registration || `Pump #${id}`;
-        if (id !== undefined && id !== null) {
-          list.push({
-            label: String(label),
-            value: Number(id),
-          });
-        }
-      });
-    }
+    const availablePumps =
+      Array.isArray(pumpTypes) && pumpTypes.length > 0
+        ? pumpTypes
+        : [
+            "boom_pump",
+            "line_pump",
+            "crane_bucket",
+            "direct_pour",
+            "stationary_pump",
+          ];
+
+    availablePumps.forEach((p: any) => {
+      if (!p) return;
+      const val =
+        typeof p === "object" ? String(p.value || p.id || p.name) : String(p);
+      const lbl =
+        typeof p === "object"
+          ? String(p.label || p.name || formatPumpType(val))
+          : formatPumpType(val);
+      if (val !== "direct_pour" && val !== "none") {
+        list.push({
+          label: lbl,
+          value: val,
+        });
+      }
+    });
     return list;
-  }, [pumps]);
+  }, [pumpTypes]);
 
   const handleBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/more" as any);
-    }
+    router.replace("/more" as any);
   }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      StatusBar.setBarStyle("light-content");
-      if (Platform.OS === "android") {
-        StatusBar.setBackgroundColor("#063b89");
-      }
-
-      const onBackPress = () => {
-        handleBack();
-        return true;
-      };
-
-      const subscription = BackHandler.addEventListener(
-        "hardwareBackPress",
-        onBackPress,
-      );
-
-      return () => subscription.remove();
-    }, [handleBack]),
-  );
 
   const fetchCustomerPOs = useCallback(
     async (isPullRefresh: boolean = false) => {
@@ -401,6 +394,30 @@ export default function CustomerPOScreen() {
       }
     },
     [token, plant_id, user],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      StatusBar.setBarStyle("light-content");
+      if (Platform.OS === "android") {
+        StatusBar.setBackgroundColor("#063b89");
+      }
+
+      // Always fetch latest Customer POs when screen gains focus
+      fetchCustomerPOs(false);
+
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress,
+      );
+
+      return () => subscription.remove();
+    }, [handleBack, fetchCustomerPOs]),
   );
 
   const confirmDeletePO = useCallback(
@@ -465,60 +482,291 @@ export default function CustomerPOScreen() {
     [hideAlert, confirmDeletePO],
   );
 
-  const handleOpenGenerateSO = (po: CustomerPOItem) => {
-    setSelectedPoForGen(po);
-    setGenModalPoData(po);
-    setGenModalLoading(false);
-
+  const mapPOToGenLines = (po: CustomerPOItem): GenerateSOLineItem[] => {
     const rawItems = Array.isArray(po?.items) ? po.items : [];
     const salesOrders = Array.isArray((po as any)?.sales_orders)
       ? (po as any).sales_orders
       : [];
 
-    const mappedItems: GenerateSOLineItem[] = rawItems.map(
-      (it: any, idx: number) => {
-        const mixName =
-          it.mix_design?.design_name ||
-          it.mix_design?.name ||
-          it.mix_design?.design_code ||
-          it.mix_design_name ||
-          `Mix #${it.mix_design_id || idx + 1}`;
+    return rawItems.map((it: any, idx: number) => {
+      const mixName =
+        it.mix_design?.design_name ||
+        it.mix_design?.name ||
+        it.mix_design?.design_code ||
+        it.mix_design_name ||
+        `Mix #${it.mix_design_id || idx + 1}`;
 
-        const poQty = parseFloat(String(it.quantity || 0)) || 0;
-        const mixId = it.mix_design_id ?? it.mix_design?.id;
+      const poQty = parseFloat(String(it.quantity || 0)) || 0;
+      const mixId = it.mix_design_id ?? it.mix_design?.id;
 
-        let conv = 0;
-        const matchingSOs = salesOrders.filter((so: any) => {
-          if (so.customer_po_item_id && it.id) {
-            return Number(so.customer_po_item_id) === Number(it.id);
-          }
-          if (mixId && so.mix_design_id) {
-            return Number(so.mix_design_id) === Number(mixId);
-          }
-          return false;
-        });
+      let conv = 0;
+      const matchingSOs = salesOrders.filter((so: any) => {
+        if (so.customer_po_item_id && it.id) {
+          return Number(so.customer_po_item_id) === Number(it.id);
+        }
+        if (mixId && so.mix_design_id) {
+          return Number(so.mix_design_id) === Number(mixId);
+        }
+        return false;
+      });
 
-        matchingSOs.forEach((so: any) => {
-          conv += parseFloat(String(so.total_qty || so.quantity || 0)) || 0;
-        });
+      matchingSOs.forEach((so: any) => {
+        conv += parseFloat(String(so.total_qty || so.quantity || 0)) || 0;
+      });
 
-        const rem = Math.max(0, parseFloat((poQty - conv).toFixed(2)));
+      const rem = Math.max(0, parseFloat((poQty - conv).toFixed(2)));
 
-        return {
-          item_id: it.id || idx + 1,
-          mix_design_id: mixId || null,
-          mix_design_name: mixName,
-          po_qty: poQty,
-          converted_qty: parseFloat(conv.toFixed(2)),
-          remaining_qty: rem,
-          so_qty: rem > 0 ? String(rem) : "0",
-          concrete_pump: it.concrete_pump ? Number(it.concrete_pump) : null,
-        };
-      },
-    );
+      return {
+        item_id: Number(it.id) || idx + 1,
+        mix_design_id: mixId || null,
+        mix_design_name: mixName,
+        po_qty: poQty,
+        converted_qty: parseFloat(conv.toFixed(2)),
+        remaining_qty: rem,
+        so_qty: rem > 0 ? String(rem) : "0",
+        concrete_pump: it.concrete_pump ? String(it.concrete_pump) : null,
+      };
+    });
+  };
 
-    setGenModalItems(mappedItems);
+  const getModalCustomerName = useCallback(
+    (data: any, fallbackPo: any) => {
+      // 1. Direct fields from data or fallback
+      const candidate =
+        data?.patron?.legal_name ||
+        data?.patron?.name ||
+        data?.customer?.legal_name ||
+        data?.customer?.name ||
+        data?.legal_name ||
+        data?.customer_name ||
+        data?.client ||
+        fallbackPo?.patron?.legal_name ||
+        fallbackPo?.patron?.name ||
+        fallbackPo?.customer?.legal_name ||
+        fallbackPo?.customer?.name ||
+        fallbackPo?.legal_name ||
+        fallbackPo?.customer_name ||
+        fallbackPo?.client;
+
+      if (
+        candidate &&
+        typeof candidate === "string" &&
+        candidate.trim() &&
+        candidate.trim().toUpperCase() !== "N/A"
+      ) {
+        return candidate.trim();
+      }
+
+      // 2. Lookup by patron_id / customer_id in Redux customers
+      const pId =
+        data?.patron_id ??
+        data?.patron?.id ??
+        data?.customer_id ??
+        fallbackPo?.patron_id ??
+        fallbackPo?.patron?.id ??
+        fallbackPo?.customer_id;
+
+      if (pId && Array.isArray(customers) && customers.length > 0) {
+        const match = customers.find(
+          (c: any) => Number(c.id) === Number(pId),
+        );
+        if (match) {
+          const matchName =
+            match.legal_name ||
+            match.name ||
+            match.label ||
+            match.company_name;
+          if (matchName) return matchName;
+        }
+      }
+
+      if (pId) {
+        return `Customer #${pId}`;
+      }
+
+      return "N/A";
+    },
+    [customers],
+  );
+
+  const getModalSiteName = useCallback(
+    (data: any, fallbackPo: any) => {
+      // 1. Direct fields from data or fallback
+      const candidate =
+        data?.site?.name ||
+        data?.site?.site_name ||
+        (typeof data?.site === "string" ? data.site : null) ||
+        data?.site_name ||
+        fallbackPo?.site?.name ||
+        fallbackPo?.site?.site_name ||
+        (typeof fallbackPo?.site === "string" ? fallbackPo.site : null) ||
+        fallbackPo?.site_name;
+
+      if (
+        candidate &&
+        typeof candidate === "string" &&
+        candidate.trim() &&
+        candidate.trim().toUpperCase() !== "N/A"
+      ) {
+        return candidate.trim();
+      }
+
+      // 2. Lookup by site_id in Redux sites
+      const sId =
+        data?.site_id ??
+        data?.site?.id ??
+        fallbackPo?.site_id ??
+        fallbackPo?.site?.id;
+
+      if (sId && Array.isArray(sites) && sites.length > 0) {
+        const match = sites.find(
+          (s: any) => Number(s.id) === Number(sId),
+        );
+        if (match) {
+          const matchName = match.name || match.label || match.site_name;
+          if (matchName) return matchName;
+        }
+      }
+
+      if (sId) {
+        return `Site #${sId}`;
+      }
+
+      return "N/A";
+    },
+    [sites],
+  );
+
+  const handleOpenGenerateSO = async (po: CustomerPOItem) => {
+    setSelectedPoForGen(po);
+    setGenModalPoData(po);
+    setGenModalItems(mapPOToGenLines(po));
     setGenerateModalVisible(true);
+    setGenModalLoading(true);
+
+    try {
+      const targetPlantId =
+        plant_id ?? user?.default_plant_id ?? (user as any)?.plant_id ?? null;
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = token.startsWith("Bearer ")
+          ? token
+          : `Bearer ${token}`;
+      }
+      if (targetPlantId) headers["X-Plant-Id"] = String(targetPlantId);
+
+      const params: Record<string, any> = {};
+      if (targetPlantId) params.plant_id = String(targetPlantId);
+
+      console.log(
+        `[GenerateSalesOrder] Fetching fresh details for Customer PO #${po.id}...`,
+      );
+      const res = await axios.get(`${baseURL}/customer-pos/${po.id}`, {
+        headers,
+        params,
+        timeout: 20000,
+      });
+
+      const freshPo: any = res.data?.data || res.data || po;
+      console.log(
+        `[GenerateSalesOrder] Fresh details for PO #${po.id} fetched successfully. Items:`,
+        freshPo?.items?.map((it: any) => ({
+          id: it.id,
+          mix_design_id: it.mix_design_id,
+          quantity: it.quantity,
+        })),
+      );
+
+      // Preserve existing patron & site relations if freshPo returns raw database fields without eager-loaded relations
+      const resolvedPatron =
+        freshPo?.patron || po?.patron || (po as any)?.customer || null;
+      const resolvedSite =
+        freshPo?.site || po?.site || null;
+
+      const mergedPo: CustomerPOItem = {
+        ...po,
+        ...freshPo,
+        patron: resolvedPatron,
+        site: resolvedSite,
+        items:
+          Array.isArray(freshPo?.items) && freshPo.items.length > 0
+            ? freshPo.items
+            : po?.items,
+      };
+
+      setSelectedPoForGen(mergedPo);
+      setGenModalPoData(mergedPo);
+      setGenModalItems(mapPOToGenLines(mergedPo));
+
+      // Sync the merged PO data into local poList state
+      setPoList((prev) =>
+        prev.map((p) =>
+          p.id === mergedPo.id
+            ? {
+                ...p,
+                ...mergedPo,
+                patron: mergedPo.patron || p.patron,
+                site: mergedPo.site || p.site,
+              }
+            : p,
+        ),
+      );
+
+      // Fetch customer name if still missing
+      const patronId = mergedPo.patron_id || mergedPo.patron?.id;
+      if (patronId && (!resolvedPatron || !resolvedPatron.legal_name)) {
+        axios
+          .get(`${baseURL}/customers/${patronId}`, { headers })
+          .then((cRes) => {
+            const cData = cRes.data?.data || cRes.data;
+            const cName =
+              cData?.legal_name || cData?.name || cData?.company_name;
+            if (cName) {
+              setGenModalPoData((prev: any) => ({
+                ...prev,
+                patron: { ...prev?.patron, id: patronId, legal_name: cName },
+              }));
+              setSelectedPoForGen((prev: any) => ({
+                ...prev,
+                patron: { ...prev?.patron, id: patronId, legal_name: cName },
+              }));
+            }
+          })
+          .catch(() => {});
+      }
+
+      // Fetch site name if still missing
+      const siteId = mergedPo.site_id || mergedPo.site?.id;
+      if (siteId && (!resolvedSite || !resolvedSite.name)) {
+        axios
+          .get(`${baseURL}/sites/${siteId}`, { headers })
+          .then((sRes) => {
+            const sData = sRes.data?.data || sRes.data;
+            const sName = sData?.name || sData?.site_name;
+            if (sName) {
+              setGenModalPoData((prev: any) => ({
+                ...prev,
+                site: { ...prev?.site, id: siteId, name: sName },
+              }));
+              setSelectedPoForGen((prev: any) => ({
+                ...prev,
+                site: { ...prev?.site, id: siteId, name: sName },
+              }));
+            }
+          })
+          .catch(() => {});
+      }
+    } catch (err: any) {
+      console.warn(
+        `[GenerateSalesOrder] Could not fetch fresh details for PO #${po.id}, using local data:`,
+        err?.message || err,
+      );
+    } finally {
+      setGenModalLoading(false);
+    }
   };
 
   const handleSOQtyChange = (index: number, val: string) => {
@@ -529,7 +777,7 @@ export default function CustomerPOScreen() {
     });
   };
 
-  const handleSOPumpSelect = (pumpValue: number | null) => {
+  const handleSOPumpSelect = (pumpValue: string | null) => {
     if (activePumpRowIndex === null) return;
     setGenModalItems((prev) => {
       const copy = [...prev];
@@ -549,10 +797,10 @@ export default function CustomerPOScreen() {
     const itemsToSubmit = genModalItems
       .filter((row) => parseFloat(row.so_qty) > 0)
       .map((row) => ({
-        customer_po_item_id: row.item_id,
-        mix_design_id: row.mix_design_id,
+        item_id: Number(row.item_id),
+        // mix_design_id: row.mix_design_id,
         quantity: parseFloat(row.so_qty),
-        concrete_pump: row.concrete_pump ?? null,
+        concrete_pump: row.concrete_pump ? String(row.concrete_pump) : null,
       }));
 
     if (itemsToSubmit.length === 0) {
@@ -583,15 +831,63 @@ export default function CustomerPOScreen() {
       }
       if (targetPlantId) headers["X-Plant-Id"] = String(targetPlantId);
 
-      const res = await axios.post(
-        `${baseURL}/customer-pos/${selectedPoForGen.id}/generate-sales-order`,
-        payload,
-        {
-          headers,
-          params: { customer_po: selectedPoForGen.id },
-          timeout: 25000,
-        },
+      const queryParams = { customer_po: selectedPoForGen.id };
+      const primaryUrl = `${baseURL}/customer-pos/${selectedPoForGen.id}/convert-salesorder`;
+
+      console.log("==================================================");
+      console.log("[GenerateSalesOrder] INITIATING API CALL");
+      console.log("[GenerateSalesOrder] Customer PO ID:", selectedPoForGen.id);
+      console.log(
+        "[GenerateSalesOrder] Customer PO Ref:",
+        selectedPoForGen.reference,
       );
+      console.log("[GenerateSalesOrder] Effective Plant ID:", targetPlantId);
+      console.log("[GenerateSalesOrder] Request URL:", primaryUrl);
+      console.log(
+        "[GenerateSalesOrder] Request Headers:",
+        JSON.stringify(headers, null, 2),
+      );
+      console.log(
+        "[GenerateSalesOrder] Query Params:",
+        JSON.stringify(queryParams, null, 2),
+      );
+      console.log(
+        "[GenerateSalesOrder] Request Payload:",
+        JSON.stringify(payload, null, 2),
+      );
+      console.log("==================================================");
+
+      let res: any;
+      try {
+        res = await axios.post(primaryUrl, payload, {
+          headers,
+          params: queryParams,
+          timeout: 25000,
+        });
+      } catch (firstErr: any) {
+        if (firstErr?.response?.status === 404) {
+          const fallbackUrl = `${baseURL}/customer-pos/${selectedPoForGen.id}/convert-salesorder`;
+          console.warn(
+            `[GenerateSalesOrder] Primary URL returned 404. Attempting fallback: ${fallbackUrl}`,
+          );
+          res = await axios.post(fallbackUrl, payload, {
+            headers,
+            params: queryParams,
+            timeout: 25000,
+          });
+        } else {
+          throw firstErr;
+        }
+      }
+
+      console.log("==================================================");
+      console.log("[GenerateSalesOrder] API SUCCESS RESPONSE");
+      console.log("[GenerateSalesOrder] Status:", res.status);
+      console.log(
+        "[GenerateSalesOrder] Response Data:",
+        JSON.stringify(res.data, null, 2),
+      );
+      console.log("==================================================");
 
       setGenerateModalVisible(false);
       Alert.alert(
@@ -608,11 +904,54 @@ export default function CustomerPOScreen() {
       );
       fetchCustomerPOs(false);
     } catch (err: any) {
-      const errMsg =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Failed to generate sales order.";
+      console.error("==================================================");
+      console.error("[GenerateSalesOrder] API ERROR OCCURRED!");
+      console.error("[GenerateSalesOrder] Error Message:", err?.message);
+      console.error("[GenerateSalesOrder] Status:", err?.response?.status);
+      console.error(
+        "[GenerateSalesOrder] Status Text:",
+        err?.response?.statusText,
+      );
+      console.error(
+        "[GenerateSalesOrder] Response Data:",
+        JSON.stringify(err?.response?.data, null, 2),
+      );
+      console.error(
+        "[GenerateSalesOrder] Response Headers:",
+        JSON.stringify(err?.response?.headers, null, 2),
+      );
+      console.error("[GenerateSalesOrder] Failed URL:", err?.config?.url);
+      console.error("[GenerateSalesOrder] Failed Method:", err?.config?.method);
+      console.error("[GenerateSalesOrder] Failed Payload:", err?.config?.data);
+      console.error("==================================================");
+
+      let errMsg = "Failed to generate sales order.";
+      if (err?.response?.data?.message) {
+        errMsg = err.response.data.message;
+      } else if (err?.response?.data?.error) {
+        errMsg =
+          typeof err.response.data.error === "string"
+            ? err.response.data.error
+            : JSON.stringify(err.response.data.error);
+      } else if (err?.message) {
+        errMsg = err.message;
+      }
+
+      if (
+        err?.response?.data?.errors &&
+        typeof err.response.data.errors === "object"
+      ) {
+        const errorDetails = Object.entries(err.response.data.errors)
+          .map(([field, msgs]: [string, any]) => {
+            const msgStr = Array.isArray(msgs) ? msgs.join(", ") : String(msgs);
+            return `• ${field}: ${msgStr}`;
+          })
+          .join("\n");
+        if (errorDetails) {
+          errMsg += `\n\n${errorDetails}`;
+        }
+      }
+
       Alert.alert("Error", errMsg);
     } finally {
       setIsGeneratingSO(false);
@@ -679,11 +1018,10 @@ export default function CustomerPOScreen() {
   };
 
   useEffect(() => {
-    fetchCustomerPOs(false);
-    if (!dropdownsLoaded || !pumps || pumps.length === 0) {
+    if (!dropdownsLoaded || !pumpTypes || pumpTypes.length === 0) {
       dispatch(fetchDropdowns());
     }
-  }, [fetchCustomerPOs, dropdownsLoaded, pumps, dispatch]);
+  }, [dropdownsLoaded, pumpTypes, dispatch]);
 
   const onRefresh = async () => {
     if (refreshing) return;
@@ -810,7 +1148,10 @@ export default function CustomerPOScreen() {
       <View style={styles.cardContainer}>
         {/* Status vertical accent stripe */}
         <View
-          style={[styles.cardLeftStripe, { backgroundColor: statusMeta.accent }]}
+          style={[
+            styles.cardLeftStripe,
+            { backgroundColor: statusMeta.accent },
+          ]}
         />
 
         <View style={styles.cardContent}>
@@ -840,7 +1181,8 @@ export default function CustomerPOScreen() {
                 styles.statusBadge,
                 {
                   backgroundColor: statusMeta.bgColor,
-                  borderColor: statusMeta.borderColor || statusMeta.color + "30",
+                  borderColor:
+                    statusMeta.borderColor || statusMeta.color + "30",
                 },
               ]}
             >
@@ -924,7 +1266,9 @@ export default function CustomerPOScreen() {
               <Ionicons name="calendar-outline" size={13} color="#64748B" />
               <Text style={styles.dateLabel}>
                 Order Date:{" "}
-                <Text style={styles.dateVal}>{formatDate(item.order_date)}</Text>
+                <Text style={styles.dateVal}>
+                  {formatDate(item.order_date)}
+                </Text>
               </Text>
             </View>
 
@@ -996,9 +1340,25 @@ export default function CustomerPOScreen() {
                       pathname: "/customer-po/editCustomerPO" as any,
                       params: {
                         admin_po_id: String(item.id),
+                        customer_id: String(item.patron_id || item.patron?.id || ""),
+                        customer_name:
+                          item.patron?.legal_name ||
+                          item.patron?.name ||
+                          item.client ||
+                          (item as any).customer_name ||
+                          "",
                         quotation_id: item.quotation_id
                           ? String(item.quotation_id)
                           : "",
+                        sales_executive_id: item.sales_executive_id
+                          ? String(item.sales_executive_id)
+                          : "",
+                        sales_executive_name:
+                          item.sales_executive?.name ||
+                          item.sales_executive?.label ||
+                          (item as any).sales_executive_name ||
+                          "",
+                        poData: JSON.stringify(item),
                       },
                     })
                   }
@@ -1021,7 +1381,11 @@ export default function CustomerPOScreen() {
                     <ActivityIndicator size="small" color="#DC2626" />
                   ) : (
                     <>
-                      <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                      <Ionicons
+                        name="trash-outline"
+                        size={14}
+                        color="#DC2626"
+                      />
                       <Text style={styles.actionDeleteText}>Delete</Text>
                     </>
                   )}
@@ -1274,9 +1638,7 @@ export default function CustomerPOScreen() {
             <View style={styles.emptyContainer}>
               <MaterialCommunityIcons
                 name={
-                  errorMessage
-                    ? "cloud-alert"
-                    : "clipboard-text-search-outline"
+                  errorMessage ? "cloud-alert" : "clipboard-text-search-outline"
                 }
                 size={56}
                 color={errorMessage ? "#EF4444" : "#CBD5E1"}
@@ -1297,10 +1659,7 @@ export default function CustomerPOScreen() {
               </Text>
               {errorMessage ? (
                 <TouchableOpacity
-                  style={[
-                    styles.emptyResetBtn,
-                    { backgroundColor: "#2563EB" },
-                  ]}
+                  style={[styles.emptyResetBtn, { backgroundColor: "#2563EB" }]}
                   onPress={() => fetchCustomerPOs(false)}
                 >
                   <Text
@@ -1318,9 +1677,7 @@ export default function CustomerPOScreen() {
                       setActiveTab("All");
                     }}
                   >
-                    <Text style={styles.emptyResetBtnText}>
-                      Reset Filters
-                    </Text>
+                    <Text style={styles.emptyResetBtnText}>Reset Filters</Text>
                   </TouchableOpacity>
                 )
               )}
@@ -1382,14 +1739,21 @@ export default function CustomerPOScreen() {
                         handleOpenGenerateSO(p);
                       }}
                     >
-                      <View style={[styles.sheetIconBox, { backgroundColor: "#EFF6FF" }]}>
+                      <View
+                        style={[
+                          styles.sheetIconBox,
+                          { backgroundColor: "#EFF6FF" },
+                        ]}
+                      >
                         <MaterialCommunityIcons
                           name="file-document-plus-outline"
                           size={18}
                           color="#2563EB"
                         />
                       </View>
-                      <Text style={styles.sheetOptionText}>Generate Sales Order</Text>
+                      <Text style={styles.sheetOptionText}>
+                        Generate Sales Order
+                      </Text>
                     </TouchableOpacity>
                   )}
 
@@ -1404,13 +1768,40 @@ export default function CustomerPOScreen() {
                         pathname: "/customer-po/editCustomerPO" as any,
                         params: {
                           admin_po_id: String(p.id),
-                          quotation_id: p.quotation_id ? String(p.quotation_id) : "",
+                          customer_id: String(p.patron_id || p.patron?.id || ""),
+                          customer_name:
+                            p.patron?.legal_name ||
+                            p.patron?.name ||
+                            p.client ||
+                            (p as any).customer_name ||
+                            "",
+                          quotation_id: p.quotation_id
+                            ? String(p.quotation_id)
+                            : "",
+                          sales_executive_id: p.sales_executive_id
+                            ? String(p.sales_executive_id)
+                            : "",
+                          sales_executive_name:
+                            p.sales_executive?.name ||
+                            p.sales_executive?.label ||
+                            (p as any).sales_executive_name ||
+                            "",
+                          poData: JSON.stringify(p),
                         },
                       });
                     }}
                   >
-                    <View style={[styles.sheetIconBox, { backgroundColor: "#EFF6FF" }]}>
-                      <Ionicons name="create-outline" size={18} color="#2563EB" />
+                    <View
+                      style={[
+                        styles.sheetIconBox,
+                        { backgroundColor: "#EFF6FF" },
+                      ]}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={18}
+                        color="#2563EB"
+                      />
                     </View>
                     <Text style={styles.sheetOptionText}>Edit Customer PO</Text>
                   </TouchableOpacity>
@@ -1428,10 +1819,21 @@ export default function CustomerPOScreen() {
                       setConfirmModalVisible(true);
                     }}
                   >
-                    <View style={[styles.sheetIconBox, { backgroundColor: "#DCFCE7" }]}>
-                      <Ionicons name="checkmark-circle-outline" size={18} color="#16A34A" />
+                    <View
+                      style={[
+                        styles.sheetIconBox,
+                        { backgroundColor: "#DCFCE7" },
+                      ]}
+                    >
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color="#16A34A"
+                      />
                     </View>
-                    <Text style={[styles.sheetOptionText, { color: "#16A34A" }]}>
+                    <Text
+                      style={[styles.sheetOptionText, { color: "#16A34A" }]}
+                    >
                       Confirm Purchase Order
                     </Text>
                   </TouchableOpacity>
@@ -1447,7 +1849,8 @@ export default function CustomerPOScreen() {
                     !Array.isArray(soList) || soList.length === 0;
                   const isDraft = Number(cardMenuPO.status) === 0;
                   const isConfirmed = Number(cardMenuPO.status) === 1;
-                  const canDelete = isDraft || (isConfirmed && hasNoSalesOrders);
+                  const canDelete =
+                    isDraft || (isConfirmed && hasNoSalesOrders);
 
                   if (!canDelete) return null;
 
@@ -1460,10 +1863,21 @@ export default function CustomerPOScreen() {
                         handlePromptDeletePO(p);
                       }}
                     >
-                      <View style={[styles.sheetIconBox, { backgroundColor: "#FEF2F2" }]}>
-                        <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                      <View
+                        style={[
+                          styles.sheetIconBox,
+                          { backgroundColor: "#FEF2F2" },
+                        ]}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={18}
+                          color="#DC2626"
+                        />
                       </View>
-                      <Text style={[styles.sheetOptionText, { color: "#DC2626" }]}>
+                      <Text
+                        style={[styles.sheetOptionText, { color: "#DC2626" }]}
+                      >
                         Delete Customer PO
                       </Text>
                     </TouchableOpacity>
@@ -1499,8 +1913,14 @@ export default function CustomerPOScreen() {
               {[
                 { key: "newest" as const, label: "Newest First" },
                 { key: "oldest" as const, label: "Oldest First" },
-                { key: "value_high" as const, label: "Total Value: High to Low" },
-                { key: "value_low" as const, label: "Total Value: Low to High" },
+                {
+                  key: "value_high" as const,
+                  label: "Total Value: High to Low",
+                },
+                {
+                  key: "value_low" as const,
+                  label: "Total Value: Low to High",
+                },
               ].map((opt) => (
                 <TouchableOpacity
                   key={opt.key}
@@ -1516,7 +1936,11 @@ export default function CustomerPOScreen() {
                     {opt.label}
                   </Text>
                   {sortBy === opt.key && (
-                    <Ionicons name="checkmark-circle" size={20} color="#2563EB" />
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color="#2563EB"
+                    />
                   )}
                 </TouchableOpacity>
               ))}
@@ -1539,7 +1963,11 @@ export default function CustomerPOScreen() {
                     {tab.label}
                   </Text>
                   {activeTab === tab.value && (
-                    <Ionicons name="checkmark-circle" size={20} color="#2563EB" />
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={20}
+                      color="#2563EB"
+                    />
                   )}
                 </TouchableOpacity>
               ))}
@@ -1637,9 +2065,7 @@ export default function CustomerPOScreen() {
                 {isUpdatingStatus ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.confirmSubmitBtnText}>
-                    Yes, Confirm
-                  </Text>
+                  <Text style={styles.confirmSubmitBtnText}>Yes, Confirm</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1656,15 +2082,25 @@ export default function CustomerPOScreen() {
           if (!isGeneratingSO) setGenerateModalVisible(false);
         }}
       >
-        <View style={styles.genModalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.genModalOverlay}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+        >
           <View style={styles.genModalContainer}>
             <View style={styles.genModalHeader}>
-              <Text style={styles.genModalTitle}>Generate Sales Orders</Text>
+              <View>
+                <Text style={styles.genModalTitle}>Generate Sales Orders</Text>
+                <Text style={styles.genModalSubtitle}>
+                  Set quantity and pump for each mix design
+                </Text>
+              </View>
               <TouchableOpacity
                 onPress={() => {
                   if (!isGeneratingSO) setGenerateModalVisible(false);
                 }}
                 disabled={isGeneratingSO}
+                style={styles.genModalCloseBtn}
               >
                 <Ionicons name="close" size={22} color="#64748B" />
               </TouchableOpacity>
@@ -1680,6 +2116,9 @@ export default function CustomerPOScreen() {
             ) : (
               <ScrollView
                 style={styles.genModalBody}
+                contentContainerStyle={{ paddingBottom: 60 }}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
                 showsVerticalScrollIndicator={false}
               >
                 <View style={styles.genInfoCard}>
@@ -1693,32 +2132,30 @@ export default function CustomerPOScreen() {
                         "N/A"}
                       {genModalPoData?.customer_po_reference
                         ? ` - ${genModalPoData.customer_po_reference}`
-                        : ""}
+                        : selectedPoForGen?.customer_po_reference
+                          ? ` - ${selectedPoForGen.customer_po_reference}`
+                          : ""}
                     </Text>
                   </View>
 
                   <View style={styles.genInfoCol}>
                     <Text style={styles.genInfoLabel}>Patron / Customer</Text>
                     <Text style={styles.genInfoVal} numberOfLines={1}>
-                      {genModalPoData?.patron?.legal_name ||
-                        selectedPoForGen?.patron?.legal_name ||
-                        "N/A"}
+                      {getModalCustomerName(genModalPoData, selectedPoForGen)}
                     </Text>
                   </View>
 
                   <View style={styles.genInfoCol}>
                     <Text style={styles.genInfoLabel}>Site</Text>
                     <Text style={styles.genInfoVal} numberOfLines={1}>
-                      {genModalPoData?.site?.name ||
-                        selectedPoForGen?.site?.name ||
-                        "N/A"}
+                      {getModalSiteName(genModalPoData, selectedPoForGen)}
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.genSectionHeader}>
                   <Text style={styles.genSectionTitle}>
-                    ORDERED MIX DESIGNS
+                    ORDERED MIX DESIGNS ({genModalItems.length})
                   </Text>
                 </View>
 
@@ -1731,160 +2168,212 @@ export default function CustomerPOScreen() {
                         color="#059669"
                       />
                       <Text style={styles.allCompletedBannerText}>
-                        All mix designs for this Purchase Order have already been fully converted into Sales Orders.
+                        All mix designs for this Purchase Order have already
+                        been fully converted into Sales Orders.
                       </Text>
                     </View>
                   )}
 
-                <View style={styles.genTableWrapper}>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={true}
-                  >
-                    <View>
-                      <View style={styles.genTableHeaderRow}>
-                        <Text style={[styles.genTableHeaderText, { width: 140 }]}>
-                          Mix Design
-                        </Text>
-                        <Text style={[styles.genTableHeaderText, { width: 85 }]}>
-                          PO Qty
-                        </Text>
-                        <Text style={[styles.genTableHeaderText, { width: 85 }]}>
-                          Converted
-                        </Text>
-                        <Text style={[styles.genTableHeaderText, { width: 95 }]}>
-                          Remaining
-                        </Text>
-                        <Text style={[styles.genTableHeaderText, { width: 105 }]}>
-                          SO Qty (m³)
-                        </Text>
-                        <Text style={[styles.genTableHeaderText, { width: 165 }]}>
-                          Concrete Pump / Type
-                        </Text>
-                      </View>
+                {/* Card-Based Layout (No horizontal scrolling!) */}
+                <View style={styles.genCardsContainer}>
+                  {genModalItems.map((row, idx) => {
+                    const isCompleted = row.remaining_qty <= 0;
+                    const selectedPumpObj = pumpOptionsList.find(
+                      (p) => p.value === row.concrete_pump,
+                    );
+                    const pumpDisplayText =
+                      selectedPumpObj?.label ||
+                      (row.concrete_pump
+                        ? formatPumpType(row.concrete_pump)
+                        : "Select Pump");
 
-                      {genModalItems.map((row, idx) => {
-                        const isCompleted = row.remaining_qty <= 0;
-                        const selectedPumpObj = pumpOptionsList.find(
-                          (p) => p.value === row.concrete_pump,
-                        );
-                        const pumpDisplayText =
-                          selectedPumpObj?.label ||
-                          (row.concrete_pump
-                            ? `Pump #${row.concrete_pump}`
-                            : "Select Pump");
-
-                        return (
-                          <View
-                            key={String(row.item_id || idx)}
-                            style={[
-                              styles.genTableRow,
-                              isCompleted && styles.genTableRowDisabled,
-                            ]}
-                          >
-                            <View style={{ width: 140, paddingRight: 8 }}>
+                    return (
+                      <View
+                        key={String(row.item_id || idx)}
+                        style={[
+                          styles.mixCard,
+                          isCompleted && styles.mixCardCompleted,
+                        ]}
+                      >
+                        {/* Card Header: Name + Status Badge */}
+                        <View style={styles.mixCardHeader}>
+                          <View style={styles.mixCardTitleRow}>
+                            <View
+                              style={[
+                                styles.mixIconBadge,
+                                isCompleted && styles.mixIconBadgeCompleted,
+                              ]}
+                            >
+                              <Ionicons
+                                name="cube"
+                                size={16}
+                                color={isCompleted ? "#059669" : "#2563EB"}
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
                               <Text
-                                style={[
-                                  styles.genMixNameText,
-                                  isCompleted && { color: "#64748B" },
-                                ]}
+                                style={styles.mixCardTitle}
                                 numberOfLines={2}
                               >
                                 {row.mix_design_name}
                               </Text>
+                              <Text style={styles.mixCardSubtext}>
+                                Product #{idx + 1}
+                              </Text>
                             </View>
+                          </View>
+                          {isCompleted ? (
+                            <View style={styles.statusPillCompleted}>
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={13}
+                                color="#059669"
+                              />
+                              <Text style={styles.statusPillTextCompleted}>
+                                Fulfilled
+                              </Text>
+                            </View>
+                          ) : (
+                            <View style={styles.statusPillPending}>
+                              <Text style={styles.statusPillTextPending}>
+                                {row.remaining_qty} m³ Remaining
+                              </Text>
+                            </View>
+                          )}
+                        </View>
 
-                            <Text style={[styles.genCellText, { width: 85 }]}>
+                        {/* Metric Stats: PO Qty, Converted, Remaining */}
+                        <View style={styles.mixMetricsRow}>
+                          <View style={styles.mixMetricItem}>
+                            <Text style={styles.mixMetricLabel}>PO QTY</Text>
+                            <Text style={styles.mixMetricValue}>
                               {row.po_qty} m³
                             </Text>
-
-                            <Text style={[styles.genCellText, { width: 85 }]}>
+                          </View>
+                          <View style={styles.mixMetricDivider} />
+                          <View style={styles.mixMetricItem}>
+                            <Text style={styles.mixMetricLabel}>CONVERTED</Text>
+                            <Text style={styles.mixMetricValue}>
                               {row.converted_qty} m³
                             </Text>
+                          </View>
+                          <View style={styles.mixMetricDivider} />
+                          <View style={styles.mixMetricItem}>
+                            <Text style={styles.mixMetricLabel}>REMAINING</Text>
+                            <Text
+                              style={[
+                                styles.mixMetricValue,
+                                { color: isCompleted ? "#059669" : "#2563EB" },
+                              ]}
+                            >
+                              {row.remaining_qty} m³
+                            </Text>
+                          </View>
+                        </View>
 
-                            <View style={{ width: 95 }}>
-                              {isCompleted ? (
-                                <View style={styles.completedBadgeWrap}>
-                                  <Ionicons
-                                    name="checkmark-circle"
-                                    size={13}
-                                    color="#059669"
-                                  />
-                                  <Text style={styles.completedCellText}>
-                                    0 m³ (Done)
-                                  </Text>
-                                </View>
-                              ) : (
-                                <Text
-                                  style={[
-                                    styles.genCellText,
-                                    styles.genRemainingText,
-                                  ]}
-                                >
-                                  {row.remaining_qty} m³
+                        {/* Actionable Input Form (Immediately visible on screen!) */}
+                        {isCompleted ? (
+                          <View style={styles.mixCompletedBanner}>
+                            <Ionicons
+                              name="checkmark-done"
+                              size={15}
+                              color="#059669"
+                            />
+                            <Text style={styles.mixCompletedBannerText}>
+                              Fully converted to Sales Orders.
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={styles.mixFormSection}>
+                            {/* SO Quantity Field */}
+                            <View style={styles.mixFormField}>
+                              <View style={styles.mixFieldHeader}>
+                                <Text style={styles.mixFieldLabel}>
+                                  SO Qty to Generate (m³)
+                                  <Text style={{ color: "#EF4444" }}> *</Text>
                                 </Text>
-                              )}
-                            </View>
-
-                            <View style={{ width: 105, paddingRight: 10 }}>
-                              <TextInput
-                                style={[
-                                  styles.genSoQtyInput,
-                                  isCompleted && styles.genSoQtyInputDisabled,
-                                ]}
-                                value={isCompleted ? "0" : row.so_qty}
-                                onChangeText={(val) =>
-                                  handleSOQtyChange(idx, val)
-                                }
-                                keyboardType="decimal-pad"
-                                editable={!isCompleted}
-                                placeholder="0.0"
-                                placeholderTextColor="#94A3B8"
-                                selectTextOnFocus={!isCompleted}
-                              />
-                            </View>
-
-                            <View style={{ width: 165 }}>
-                              <TouchableOpacity
-                                style={[
-                                  styles.genPumpSelectBtn,
-                                  isCompleted && styles.genPumpSelectBtnDisabled,
-                                ]}
-                                onPress={() => {
-                                  if (!isCompleted) {
-                                    setActivePumpRowIndex(idx);
-                                    setPumpPickerVisible(true);
+                                {row.remaining_qty > 0 && (
+                                  <TouchableOpacity
+                                    style={styles.fillMaxBtn}
+                                    onPress={() =>
+                                      handleSOQtyChange(
+                                        idx,
+                                        String(row.remaining_qty),
+                                      )
+                                    }
+                                    activeOpacity={0.7}
+                                  >
+                                    <Text style={styles.fillMaxBtnText}>
+                                      Set Max ({row.remaining_qty})
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                              <View style={styles.mixInputWrap}>
+                                <Ionicons
+                                  name="speedometer-outline"
+                                  size={18}
+                                  color="#2563EB"
+                                  style={{ marginLeft: 12 }}
+                                />
+                                <TextInput
+                                  style={styles.mixQtyTextInput}
+                                  value={row.so_qty}
+                                  onChangeText={(val) =>
+                                    handleSOQtyChange(idx, val)
                                   }
+                                  keyboardType="decimal-pad"
+                                  placeholder={`Enter qty (max ${row.remaining_qty})`}
+                                  placeholderTextColor="#94A3B8"
+                                  selectTextOnFocus
+                                />
+                                <Text style={styles.mixUnitText}>m³</Text>
+                              </View>
+                            </View>
+
+                            {/* Concrete Pump Selector */}
+                            <View
+                              style={[styles.mixFormField, { marginTop: 12 }]}
+                            >
+                              <Text style={styles.mixFieldLabel}>
+                                Concrete Pump Type
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.mixPumpBtn}
+                                onPress={() => {
+                                  setActivePumpRowIndex(idx);
+                                  setPumpPickerVisible(true);
                                 }}
-                                disabled={isCompleted}
                                 activeOpacity={0.75}
                               >
+                                <Ionicons
+                                  name="git-commit-outline"
+                                  size={18}
+                                  color="#64748B"
+                                  style={{ marginRight: 8 }}
+                                />
                                 <Text
                                   style={[
-                                    styles.genPumpSelectText,
-                                    isCompleted
-                                      ? styles.genPumpDisabledText
-                                      : !row.concrete_pump &&
-                                        styles.genPumpPlaceholder,
+                                    styles.mixPumpBtnText,
+                                    !row.concrete_pump &&
+                                      styles.mixPumpBtnPlaceholder,
                                   ]}
                                   numberOfLines={1}
                                 >
-                                  {isCompleted ? "Fulfilled" : pumpDisplayText}
+                                  {pumpDisplayText}
                                 </Text>
-                                {!isCompleted && (
-                                  <Ionicons
-                                    name="chevron-down"
-                                    size={15}
-                                    color="#64748B"
-                                  />
-                                )}
+                                <Ionicons
+                                  name="chevron-down"
+                                  size={16}
+                                  color="#64748B"
+                                />
                               </TouchableOpacity>
                             </View>
                           </View>
-                        );
-                      })}
-                    </View>
-                  </ScrollView>
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
 
                 <View style={styles.genModalActionsRow}>
@@ -1925,7 +2414,7 @@ export default function CustomerPOScreen() {
               </ScrollView>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* PUMP PICKER MODAL */}
@@ -2924,6 +3413,17 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#0F172A",
   },
+  genModalSubtitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  genModalCloseBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: "#F1F5F9",
+  },
   genModalLoaderWrap: {
     paddingVertical: 60,
     alignItems: "center",
@@ -2986,100 +3486,208 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     flex: 1,
   },
-  genTableWrapper: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    overflow: "hidden",
+  genCardsContainer: {
+    gap: 14,
     marginBottom: 16,
   },
-  genTableHeaderRow: {
-    flexDirection: "row",
-    backgroundColor: "#F1F5F9",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+  mixCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    padding: 14,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  genTableHeaderText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#475569",
-  },
-  genTableRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-  },
-  genTableRowDisabled: {
+  mixCardCompleted: {
     backgroundColor: "#F8FAFC",
-  },
-  genMixNameText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#0F172A",
-  },
-  genCellText: {
-    fontSize: 12,
-    color: "#334155",
-    fontWeight: "500",
-  },
-  genRemainingText: {
-    color: "#2563EB",
-    fontWeight: "700",
-  },
-  completedBadgeWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-  },
-  completedCellText: {
-    fontSize: 11,
-    color: "#059669",
-    fontWeight: "700",
-  },
-  genSoQtyInput: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
     borderColor: "#CBD5E1",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 12,
-    color: "#0F172A",
-    fontWeight: "700",
-    textAlign: "center",
+    opacity: 0.85,
   },
-  genSoQtyInputDisabled: {
-    backgroundColor: "#F1F5F9",
-    color: "#94A3B8",
-  },
-  genPumpSelectBtn: {
+  mixCardHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    marginBottom: 12,
+    gap: 10,
   },
-  genPumpSelectBtnDisabled: {
-    backgroundColor: "#F1F5F9",
-  },
-  genPumpSelectText: {
-    fontSize: 11,
-    color: "#0F172A",
-    fontWeight: "600",
+  mixCardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     flex: 1,
   },
-  genPumpPlaceholder: {
-    color: "#94A3B8",
+  mixIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  genPumpDisabledText: {
+  mixIconBadgeCompleted: {
+    backgroundColor: "#ECFDF5",
+  },
+  mixCardTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  mixCardSubtext: {
+    fontSize: 11,
+    color: "#64748B",
+    fontWeight: "500",
+    marginTop: 1,
+  },
+  statusPillCompleted: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  statusPillTextCompleted: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#047857",
+  },
+  statusPillPending: {
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  statusPillTextPending: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#1D4ED8",
+  },
+  mixMetricsRow: {
+    flexDirection: "row",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    marginBottom: 12,
+  },
+  mixMetricItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  mixMetricLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748B",
+    letterSpacing: 0.4,
+    marginBottom: 3,
+  },
+  mixMetricValue: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  mixMetricDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: "#E2E8F0",
+  },
+  mixCompletedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  mixCompletedBannerText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#15803D",
+  },
+  mixFormSection: {
+    gap: 12,
+  },
+  mixFormField: {
+    gap: 6,
+  },
+  mixFieldHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  mixFieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  fillMaxBtn: {
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  fillMaxBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#1D4ED8",
+  },
+  mixInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  mixQtyTextInput: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  mixUnitText: {
+    paddingHorizontal: 14,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  mixPumpBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  mixPumpBtnText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0F172A",
+  },
+  mixPumpBtnPlaceholder: {
     color: "#94A3B8",
+    fontWeight: "400",
   },
   genModalActionsRow: {
     flexDirection: "row",

@@ -484,11 +484,7 @@ export default function LeadScreen() {
 
   // Back navigation directly to More screen
   const handleBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/more" as any);
-    }
+    router.replace("/more" as any);
   }, []);
 
   // Automatically refresh when screen regains focus and register hardware back handler
@@ -894,7 +890,15 @@ export default function LeadScreen() {
       estimatedQuantity: String(lead.estimated_quantity || ""),
       expectedValue: String(lead.expected_value || ""),
       remarks: lead.remarks || "",
+      mixDesignId: String(lead.mix_design_id || lead.mix_design?.id || ""),
+      mixDesignName:
+        lead.mix_design?.design_name ||
+        lead.mix_design?.name ||
+        lead.mix_design?.code ||
+        "",
       leadData: JSON.stringify(lead),
+      plant_id: String(lead.plant_id || plant_id || "6"),
+      sales_executive_id: lead.assigned_to ? String(lead.assigned_to) : "",
     };
 
     router.push({
@@ -1575,27 +1579,10 @@ export default function LeadScreen() {
                   ? "No matching leads found for current search/filter."
                   : "No sales leads currently available for this plant."}
               </Text>
-              <TouchableOpacity
-                style={styles.emptyAddBtn}
-                onPress={handleNavigateToAddLead}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="add" size={18} color="#FFFFFF" />
-                <Text style={styles.emptyAddBtnText}>Add First Lead</Text>
-              </TouchableOpacity>
             </View>
           }
         />
       )}
-
-      {/* FLOATING ACTION BUTTON: ADD LEAD */}
-      <TouchableOpacity
-        style={styles.fabButton}
-        onPress={handleNavigateToAddLead}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="add" size={30} color="#FFFFFF" />
-      </TouchableOpacity>
 
       {/* 3-DOTS ACTION SHEET MODAL */}
       <Modal

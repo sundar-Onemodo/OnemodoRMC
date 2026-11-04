@@ -671,14 +671,16 @@ const QuotationCard = React.memo(function QuotationCard({
             </TouchableOpacity>
 
             {/* Edit Button */}
-            <TouchableOpacity
-              style={styles.actionEditBtn}
-              onPress={() => onOpenEdit(item)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="create-outline" size={14} color="#2563EB" />
-              <Text style={styles.actionEditText}>Edit</Text>
-            </TouchableOpacity>
+            {canEdit && (
+              <TouchableOpacity
+                style={styles.actionEditBtn}
+                onPress={() => onOpenEdit(item)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="create-outline" size={14} color="#2563EB" />
+                <Text style={styles.actionEditText}>Edit</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Delete Button */}
             {canDelete && onDeleteQuotation && (
@@ -794,8 +796,6 @@ export default function QuotationScreen({
   const handleBack = useCallback(() => {
     if (onBack) {
       onBack();
-    } else if (router.canGoBack()) {
-      router.back();
     } else {
       router.replace("/more" as any);
     }
