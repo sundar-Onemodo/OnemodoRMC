@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -129,8 +130,12 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           >
             {/* Header / Brand section */}
             <View style={styles.headerSection}>
-              <View style={[styles.logoBg, { backgroundColor: colors.primary }]}>
-                <MaterialIcons name="local-shipping" size={32} color="#ffffff" />
+              <View style={styles.logoBg}>
+                <Image
+                  source={require('@/assets/images/app-logo.png')}
+                  style={{ width: 64, height: 64, borderRadius: 20 }}
+                  resizeMode="cover"
+                />
               </View>
               <Text style={[styles.brandTitle, { color: colors.text }]}>Onemodo RMC</Text>
               <Text style={[styles.brandSubtitle, { color: colors.textSecondary }]}>

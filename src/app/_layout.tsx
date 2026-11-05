@@ -3,11 +3,12 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { useColorScheme, View } from "react-native";
 
-import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { ModernSplashScreen } from "@/components/ModernSplashScreen";
 import AppTabs from "@/components/app-tabs";
 import { Drawer } from "@/components/ui/drawer";
 import { AuthProvider, useAuth } from "@/context/auth-context";
@@ -16,6 +17,9 @@ import LoginScreen from "./login";
 import { persistor, RootState, store } from "@/store/store";
 import { Provider, useSelector } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
+
+// Keep the native splash screen visible while JS bundles and assets load
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function TabLayoutInner() {
   const { isAuthenticated, login } = useAuth();
@@ -27,7 +31,7 @@ function TabLayoutInner() {
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <View style={{ flex: 1 }}>
         <StatusBar style="light" backgroundColor="#063b89" />
-        <AnimatedSplashOverlay />
+        <ModernSplashScreen duration={2200} />
         {isUserAuthenticated ? (
           <>
             <AppTabs />

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "onemodoRMC",
+    "name": "MODORMC",
     "slug": "onemodoRMC",
     "owner": "sayee",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/app-logo.png",
     "scheme": "onemodormc",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.onemodo.rmc"
+      "package": "com.onemodo.rmc",
+      "versionCode": 1
     },
     "web": {
       "output": "static",
@@ -30,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#821215",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
