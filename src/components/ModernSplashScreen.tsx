@@ -205,7 +205,7 @@ export function ModernSplashScreen({
   return (
     <Animated.View style={[styles.overlay, containerAnimatedStyle]}>
       <LinearGradient
-        colors={["#4F0A0E", "#881318", "#240406"]}
+        colors={["#03173D", "#063B89", "#0B2554"]}
         start={{ x: 0.1, y: 0 }}
         end={{ x: 0.9, y: 1 }}
         style={styles.gradient}
@@ -223,7 +223,7 @@ export function ModernSplashScreen({
             {/* Elevated Modern Logo Card */}
             <Animated.View style={[styles.logoCard, logoAnimatedStyle]}>
               <Image
-                source={require("@/assets/images/app-logo.png")}
+                source={require("@/assets/images/modormc-truck-blue.png")}
                 style={styles.logoImage}
                 resizeMode="cover"
               />
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH * 0.85,
     height: SCREEN_WIDTH * 0.85,
     borderRadius: (SCREEN_WIDTH * 0.85) / 2,
-    backgroundColor: "rgba(219, 21, 22, 0.22)",
+    backgroundColor: "rgba(30, 99, 219, 0.22)",
   },
   ambientCircleBottom: {
     position: "absolute",
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH * 0.9,
     height: SCREEN_WIDTH * 0.9,
     borderRadius: (SCREEN_WIDTH * 0.9) / 2,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(14, 165, 233, 0.16)",
   },
   centerContent: {
     alignItems: "center",
@@ -308,23 +308,23 @@ const styles = StyleSheet.create({
     height: 130,
     borderRadius: 65,
     borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.5)",
-    backgroundColor: "rgba(219, 21, 22, 0.22)",
+    borderColor: "rgba(147, 197, 253, 0.45)",
+    backgroundColor: "rgba(96, 165, 250, 0.16)",
   },
   logoCard: {
-    width: 110,
-    height: 110,
+    width: 116,
+    height: 116,
     borderRadius: 28,
-    backgroundColor: "#821215",
+    backgroundColor: "#071B3A",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#FF2A2D",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
+    shadowColor: "#38BDF8",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.55,
+    shadowRadius: 22,
     elevation: 16,
     borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.6)",
+    borderColor: "rgba(147, 197, 253, 0.6)",
     overflow: "hidden",
   },
   logoImage: {
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.22)",
+    borderColor: "rgba(147, 197, 253, 0.3)",
   },
   activeDot: {
     width: 6,
@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#FECACA",
+    color: "#93C5FD",
     letterSpacing: 1.4,
   },
   bottomSection: {
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: "100%",
-    backgroundColor: "#F43F5E",
+    backgroundColor: "#38BDF8",
     borderRadius: 2,
   },
   versionText: {

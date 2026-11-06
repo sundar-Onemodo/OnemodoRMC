@@ -5,13 +5,13 @@ import {
 } from "@react-navigation/native";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import React from "react";
 import { useColorScheme, View } from "react-native";
 
 import { ModernSplashScreen } from "@/components/ModernSplashScreen";
 import AppTabs from "@/components/app-tabs";
 import { Drawer } from "@/components/ui/drawer";
 import { AuthProvider, useAuth } from "@/context/auth-context";
+import { useAppUpdates } from "@/hooks/use-app-updates";
 import LoginScreen from "./login";
 
 import { persistor, RootState, store } from "@/store/store";
@@ -22,6 +22,7 @@ import { PersistGate } from "redux-persist/integration/react";
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function TabLayoutInner() {
+  useAppUpdates();
   const { isAuthenticated, login } = useAuth();
   const reduxToken = useSelector((state: RootState) => state.auth?.token);
   const isUserAuthenticated = Boolean(reduxToken || isAuthenticated);
